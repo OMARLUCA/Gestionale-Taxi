@@ -296,6 +296,7 @@
   .report-body{margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); font-family:'JetBrains Mono', monospace; font-size:12.5px; white-space:pre-wrap; line-height:1.6; color:var(--ink);}
   .report-toggle{font-size:11.5px; color:var(--amber-ink); margin-top:10px; cursor:pointer; font-weight:600;}
 
+  .overlay#overlayConfirm{align-items:center;}
   .overlay{position:fixed; inset:0; background:rgba(30,26,10,0.45); z-index:40; display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity .2s;}
   .overlay.show{opacity:1; pointer-events:auto;}
   .sheet{background:var(--surface); width:100%; border-radius:20px 20px 0 0; padding:18px 18px calc(20px + var(--safe-bottom)); border-top:1px solid var(--border); transform:translateY(100%); transition:transform .25s ease; max-height:88vh; overflow-y:auto;}
@@ -338,6 +339,42 @@
   .loading{text-align:center; padding:60px 20px; color:var(--ink-faint); font-size:13px;}
   .toast{position:fixed; bottom:calc(90px + var(--safe-bottom)); left:50%; transform:translateX(-50%); background:var(--ink); border:1px solid var(--ink); color:#fff; padding:9px 16px; border-radius:100px; font-size:12.5px; z-index:60; opacity:0; pointer-events:none; transition:opacity .25s;}
   .toast.show{opacity:1;}
+
+  /* --- Leggibilità: testi più grandi e marcati --- */
+  body{ font-size:17px !important; }
+  .field label, .form-row label, .input-row label{ font-size:16px !important; font-weight:700 !important; color:var(--ink-muted) !important; }
+  .field input, .form-row input[type=text], .form-row input[type=time], .form-row input[type=date], .form-row select{ font-size:20px !important; font-weight:600 !important; }
+  .input-row input{ font-size:19px !important; font-weight:700 !important; }
+  .kv-row{ font-size:18px !important; }
+  .kv-row .k{ font-weight:600 !important; }
+  .kv-row .v{ font-weight:700 !important; }
+  .stat-box .lbl{ font-size:15px !important; font-weight:700 !important; }
+  .stat-box .val{ font-size:26px !important; font-weight:700 !important; }
+  .entry-mid .t1{ font-size:19px !important; font-weight:700 !important; }
+  .entry-mid .t2{ font-size:16px !important; font-weight:500 !important; color:var(--ink-muted) !important; }
+  .entry-amt{ font-size:20px !important; font-weight:700 !important; }
+  .card h2{ font-size:18px !important; font-weight:700 !important; }
+  .subnote{ font-size:15.5px !important; }
+  .chip{ font-size:17px !important; font-weight:700 !important; }
+  .deadline-mid .t1{ font-size:19px !important; font-weight:700 !important; }
+  .deadline-mid .t2{ font-size:16px !important; }
+  .corse-stats .k{ font-size:13.5px !important; font-weight:700 !important; }
+  .corse-stats .v{ font-size:19px !important; font-weight:700 !important; }
+  .breakdown-row .lbl{ font-size:16.5px !important; font-weight:600 !important; }
+  .breakdown-row .val{ font-size:16.5px !important; font-weight:700 !important; }
+  .month-nav .lbl{ font-size:19px !important; font-weight:700 !important; }
+  .datenav .label{ font-size:19px !important; font-weight:700 !important; }
+  h1{ font-size:28px !important; }
+  .eyebrow{ font-size:13px !important; }
+  .tabs button{ font-size:16px !important; font-weight:700 !important; }
+  .save-btn{ font-size:18px !important; }
+  .day-total .num{ font-size:26px !important; }
+  .shift-capsule .status{ font-size:17px !important; }
+  .shift-capsule .timer{ font-size:24px !important; }
+  .shift-capsule .hint{ font-size:14px !important; }
+  .sheet-head h3{ font-size:19px !important; }
+  .empty-state{ font-size:16px !important; }
+  .deadline-status{ font-size:13px !important; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 </head>
@@ -382,36 +419,31 @@
       <div class="chip" data-tipo="posteggio">Posteggio</div>
       <div class="chip" data-tipo="prenotazione">Prenotazione</div>
     </div>
-    <div class="chip-row" id="tipoSpesaChips" style="display:none;">
-      <div class="chip active" data-tiposp="carburante">Carburante</div>
-      <div class="chip" data-tiposp="altro">Altra spesa</div>
-    </div>
     <div class="form-row" id="altroCatRow" style="display:none;">
       <label>Categoria spesa</label>
       <select id="altroCatSelect">
-        <option value="bollo">Bollo</option>
         <option value="assicurazione">Assicurazione</option>
-        <option value="manutenzione">Manutenzione</option>
-        <option value="pneumatici">Pneumatici</option>
-        <option value="canone_radio">Canone radio</option>
-        <option value="tassametro">Tassametro</option>
-        <option value="revisione">Revisione</option>
-        <option value="pec">PEC</option>
-        <option value="spid">SPID</option>
-        <option value="telefono">Telefono</option>
-        <option value="commissioni_carte">Commissioni carte di credito</option>
-        <option value="ammortamento">Ammortamento veicolo</option>
+        <option value="cancelleria">Cancelleria</option>
+        <option value="canone_radio">Canone Radio</option>
+        <option value="canone_tassametro">Canone Tassametro</option>
+        <option value="carburante">Carburante</option>
+        <option value="gomme">Gomme</option>
+        <option value="lavaggi">Lavaggi</option>
+        <option value="manutenzioni">Manutenzioni</option>
+        <option value="rata_autoveicolo">Rata Autoveicolo</option>
+        <option value="ristorazione">Ristorazione</option>
+        <option value="servizi_vari">Servizi vari</option>
       </select>
     </div>
     <div class="chip-row" id="metodoChips">
       <div class="chip active" data-metodo="carta">Carta</div>
-      <div class="chip" data-metodo="centrale">Importo centrale</div>
-      <div class="chip" data-metodo="buoni">Buoni</div>
-      <div class="chip" data-metodo="globix">Globix</div>
-      <div class="chip" data-metodo="aggeggio">Aggeggio</div>
-      <div class="chip" data-metodo="satispay">Satispay</div>
-      <div class="chip" data-metodo="app">App</div>
       <div class="chip" data-metodo="contanti">Contanti</div>
+      <div class="chip" data-metodo="app">App</div>
+      <div class="chip" data-metodo="globix">Globix</div>
+      <div class="chip" data-metodo="centrale">Importo centrale</div>
+      <div class="chip" data-metodo="aggeggio">Aggeggio</div>
+      <div class="chip" data-metodo="buoni">Buoni</div>
+      <div class="chip" data-metodo="satispay">Satispay</div>
     </div>
     <div class="form-row"><label>Ora</label><input type="time" id="timeInput"></div>
     <div class="form-row"><label>Nota (opzionale)</label><input type="text" id="noteInput" placeholder="es. cliente aeroporto..."></div>
@@ -428,6 +460,7 @@
       <div class="chip active" data-cat="patente">Patente</div>
       <div class="chip" data-cat="assicurazione">Assicurazione</div>
       <div class="chip" data-cat="revisione">Revisione</div>
+      <div class="chip" data-cat="ztl">ZTL</div>
       <div class="chip" data-cat="inps">INPS</div>
       <div class="chip" data-cat="tasse">Tasse</div>
       <div class="chip" data-cat="altro">Altro</div>
@@ -571,14 +604,23 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayConfirm">
+  <div class="sheet" style="border-radius:20px; margin:auto 14px; max-width:420px; align-self:center;">
+    <div class="sheet-head"><h3 id="confirmTitle">Conferma</h3><button id="confirmClose">✕</button></div>
+    <div id="confirmMsg" style="font-size:14px; color:var(--ink-muted); line-height:1.5; margin-bottom:18px;"></div>
+    <div style="display:flex; gap:10px;">
+      <button class="save-btn" id="confirmCancel" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">Annulla</button>
+      <button class="save-btn" id="confirmOk" style="background:var(--red);">Elimina</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
 (function(){
   "use strict";
 
-  // Standalone storage shim: outside Claude's artifact environment, window.storage
-  // doesn't exist, so we back it with localStorage using the same async interface.
   if(!window.storage){
     window.storage = {
       async get(key){
@@ -604,8 +646,8 @@
   const MESI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
   const MESI_FULL = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
   const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
-  const METODI = ['carta','centrale','buoni','globix','aggeggio','satispay','app','contanti'];
-  const METODO_LABEL = { carta:'Carta', centrale:'Importo centrale', buoni:'Buoni', globix:'Globix', aggeggio:'Aggeggio', satispay:'Satispay', app:'App', contanti:'Contanti' };
+  const METODI = ['carta','contanti','app','globix','centrale','aggeggio','buoni','satispay'];
+  const METODO_LABEL = { carta:'Carta', contanti:'Contanti', app:'App', globix:'Globix', centrale:'Importo centrale', aggeggio:'Aggeggio', buoni:'Buoni', satispay:'Satispay' };
 
   function pad(n){ return String(n).padStart(2,'0'); }
   function dateKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -641,7 +683,7 @@
 
   // ---------- Default settings ----------
   const DEFAULT_SETTINGS = {
-    tracciato: { contanti:false, carta:true, centrale:true, buoni:true, globix:true, aggeggio:true, satispay:true, app:true },
+    tracciato: { contanti:false, aggeggio:false, carta:true, centrale:true, buoni:true, globix:true, satispay:true, app:true },
     coeffRedditivita: 67,
     aliquotaSostitutiva: 15,
     inpsGestione: 'commercianti',
@@ -704,6 +746,13 @@
         state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
         state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
         state.settings.registro = Object.assign({}, DEFAULT_SETTINGS.registro, (parsed.settings && parsed.settings.registro) || {});
+        // Migrazione: Aggeggio ora è come i contanti (non tracciato). Applicata una sola volta.
+        if(!parsed.migratedAggeggio){
+          state.settings.tracciato.aggeggio = false;
+          state.migratedAggeggio = true;
+        } else {
+          state.migratedAggeggio = true;
+        }
       }
     }catch(e){ /* no data yet */ }
   }
@@ -717,6 +766,25 @@
     clearTimeout(showToast._h);
     showToast._h = setTimeout(()=> t.classList.remove('show'), 1900);
   }
+
+  let confirmResolve = null;
+  function askConfirm(title, message, okLabel){
+    return new Promise((resolve)=>{
+      confirmResolve = resolve;
+      document.getElementById('confirmTitle').textContent = title || 'Conferma eliminazione';
+      document.getElementById('confirmMsg').textContent = message || 'Sei sicuro? L\'operazione non è reversibile.';
+      document.getElementById('confirmOk').textContent = okLabel || 'Elimina';
+      document.getElementById('overlayConfirm').classList.add('show');
+    });
+  }
+  function closeConfirm(result){
+    document.getElementById('overlayConfirm').classList.remove('show');
+    if(confirmResolve){ const r = confirmResolve; confirmResolve = null; r(result); }
+  }
+  document.getElementById('confirmOk').addEventListener('click', ()=> closeConfirm(true));
+  document.getElementById('confirmCancel').addEventListener('click', ()=> closeConfirm(false));
+  document.getElementById('confirmClose').addEventListener('click', ()=> closeConfirm(false));
+  document.getElementById('overlayConfirm').addEventListener('click', (e)=>{ if(e.target.id==='overlayConfirm') closeConfirm(false); });
 
   // ---------- Header ----------
   function renderHeader(){
@@ -1007,10 +1075,18 @@
   // ---------- Entries list ----------
   const TIPO_LABEL = { posteggio:'PST', radio:'RDO', prenotazione:'PRN', carburante:'CAR', altro:'ALT' };
   const CATEGORIA_LABEL = {
-    bollo:'Bollo', assicurazione:'Assicurazione', manutenzione:'Manutenzione', pneumatici:'Pneumatici',
-    canone_radio:'Canone radio', tassametro:'Tassametro', revisione:'Revisione', pec:'PEC', spid:'SPID',
-    telefono:'Telefono', commissioni_carte:'Commissioni carte', ammortamento:'Ammortamento veicolo'
+    assicurazione:'Assicurazione', cancelleria:'Cancelleria', canone_radio:'Canone Radio',
+    canone_tassametro:'Canone Tassametro', carburante:'Carburante', gomme:'Gomme', lavaggi:'Lavaggi',
+    manutenzioni:'Manutenzioni', rata_autoveicolo:'Rata Autoveicolo', ristorazione:'Ristorazione', servizi_vari:'Servizi vari'
   };
+  // Categoria di una spesa, compatibile col vecchio formato (tipo==='carburante' o sottocategoria)
+  function spesaCategoria(e){
+    if(e.kind!=='spesa') return null;
+    if(e.sottocategoria) return e.sottocategoria;
+    if(e.tipo==='carburante') return 'carburante';
+    return 'servizi_vari';
+  }
+  function isCarburante(e){ return e.kind==='spesa' && spesaCategoria(e)==='carburante'; }
 
   function renderEntriesCard(container, dayKey, day, compact){
     const card = document.createElement('div'); card.className='card';
@@ -1030,9 +1106,10 @@
       card.appendChild(hint);
       entries.forEach(en=>{
         const swipe = document.createElement('div'); swipe.className='entry-swipe';
-        const iconCls = en.kind==='spesa' ? (en.tipo||'altro') : (en.tipo||'posteggio');
-        const iconTxt = TIPO_LABEL[en.tipo] || (en.kind==='spesa'?'ALT':'—');
-        const label = en.kind==='spesa' ? (en.tipo==='carburante'?'Carburante':(CATEGORIA_LABEL[en.sottocategoria]||'Spesa')) : (en.tipo||'corsa');
+        const spCat = en.kind==='spesa' ? spesaCategoria(en) : null;
+        const iconCls = en.kind==='spesa' ? (spCat==='carburante'?'carburante':'altro') : (en.tipo||'posteggio');
+        const iconTxt = en.kind==='spesa' ? (spCat==='carburante'?'CAR':'SPS') : (TIPO_LABEL[en.tipo]||'—');
+        const label = en.kind==='spesa' ? (CATEGORIA_LABEL[spCat]||'Spesa') : (en.tipo||'corsa');
         swipe.innerHTML = `<div class="entry-delete-reveal" data-id="${en.id}">Elimina</div>
           <div class="entry-row-content" data-id="${en.id}">
             <div class="entry-icon ${iconCls}">${iconTxt}</div>
@@ -1087,6 +1164,10 @@
       btn.addEventListener('click', async ()=>{
         const id = btn.dataset.id;
         const d = ensureDay(dayKey);
+        const en = d.entries.find(e=>e.id===id);
+        const descr = en ? `${en.kind==='spesa'?'spesa':'voce'} di ${fmtMoney(en.importo)} €${en.time?' delle '+en.time:''}` : 'questa voce';
+        const ok = await askConfirm('Eliminare la voce?', `Stai per eliminare ${descr}. L\'operazione non è reversibile.`, 'Elimina');
+        if(!ok) return;
         d.entries = d.entries.filter(e=>e.id!==id);
         await saveState(); renderMain();
       });
@@ -1112,12 +1193,10 @@
           if(byMetodoEntrata.hasOwnProperty(e.metodo)) byMetodoEntrata[e.metodo]+=e.importo;
         } else {
           speseTot += e.importo;
-          if(e.tipo==='carburante') carburanteReale += e.importo;
-          else {
-            altreSpese += e.importo;
-            const cat = e.sottocategoria || 'altro';
-            byCategoria[cat] = (byCategoria[cat]||0) + e.importo;
-          }
+          const cat = spesaCategoria(e);
+          byCategoria[cat] = (byCategoria[cat]||0) + e.importo;
+          if(cat==='carburante') carburanteReale += e.importo;
+          else altreSpese += e.importo;
         }
       }
     }
@@ -1141,12 +1220,10 @@
           if(byMetodoEntrata.hasOwnProperty(e.metodo)) byMetodoEntrata[e.metodo]+=e.importo;
         } else {
           speseTot += e.importo;
-          if(e.tipo==='carburante') carburanteReale += e.importo;
-          else {
-            altreSpese += e.importo;
-            const cat = e.sottocategoria || 'altro';
-            byCategoria[cat] = (byCategoria[cat]||0) + e.importo;
-          }
+          const cat = spesaCategoria(e);
+          byCategoria[cat] = (byCategoria[cat]||0) + e.importo;
+          if(cat==='carburante') carburanteReale += e.importo;
+          else altreSpese += e.importo;
         }
       }
     }
@@ -1199,16 +1276,11 @@
     container.appendChild(card3);
 
     const catEntries = Object.entries(m.byCategoria).filter(([k,v])=>v>0).sort((a,b)=>b[1]-a[1]);
-    if(m.carburanteReale>0 || catEntries.length>0){
+    if(catEntries.length>0){
       const card3b = document.createElement('div'); card3b.className='card'; card3b.innerHTML = `<h2>Spese per categoria · mese</h2>`;
-      if(m.carburanteReale>0){
-        const r = document.createElement('div'); r.className='kv-row';
-        r.innerHTML = `<span class="k">Carburante</span><span class="v">${fmtMoney(m.carburanteReale)} €</span>`;
-        card3b.appendChild(r);
-      }
       catEntries.forEach(([cat,val])=>{
         const r = document.createElement('div'); r.className='kv-row';
-        r.innerHTML = `<span class="k">${CATEGORIA_LABEL[cat]||'Altro'}</span><span class="v">${fmtMoney(val)} €</span>`;
+        r.innerHTML = `<span class="k">${CATEGORIA_LABEL[cat]||'Spesa'}</span><span class="v">${fmtMoney(val)} €</span>`;
         card3b.appendChild(r);
       });
       container.appendChild(card3b);
@@ -1751,7 +1823,7 @@
     return 'lontana';
   }
   const STATUS_LABEL = { scaduta:'Scaduta', urgente:'Urgente', vicina:'In arrivo', lontana:'Programmata' };
-  const CAT_LABEL = { patente:'Patente', assicurazione:'Assicurazione', revisione:'Revisione', inps:'INPS', tasse:'Tasse', altro:'Altro' };
+  const CAT_LABEL = { patente:'Patente', assicurazione:'Assicurazione', revisione:'Revisione', ztl:'ZTL', inps:'INPS', tasse:'Tasse', altro:'Altro' };
 
   let alertDismissedIds = [];
   function renderScadenzeAlert(container){
@@ -1807,6 +1879,12 @@
     });
     container.appendChild(seedBtn);
 
+    const ztlBtn = document.createElement('button');
+    ztlBtn.className = 'seed-btn';
+    ztlBtn.textContent = '+ Aggiungi ZTL (nome paese e scadenza)';
+    ztlBtn.addEventListener('click', ()=> openDeadlineSheet('ztl'));
+    container.appendChild(ztlBtn);
+
     const card = document.createElement('div'); card.className='card';
     card.innerHTML = `<h2>Prossime scadenze</h2>`;
     const sorted = [...state.deadlines].sort((a,b)=> a.scadenza.localeCompare(b.scadenza));
@@ -1831,6 +1909,10 @@
     container.appendChild(card);
     card.querySelectorAll('.deadline-del').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
+        const dl = state.deadlines.find(d=>d.id===btn.dataset.id);
+        const nome = dl ? dl.titolo : 'questa scadenza';
+        const ok = await askConfirm('Eliminare la scadenza?', `Stai per eliminare "${nome}". L\'operazione non è reversibile.`, 'Elimina');
+        if(!ok) return;
         state.deadlines = state.deadlines.filter(d=>d.id!==btn.dataset.id);
         await saveState(); renderMain();
       });
@@ -1839,8 +1921,8 @@
 
   // ---------- Report personalizzati ----------
   const TIPOLOGIA_FULL = { radio:'Radio', posteggio:'Posteggio', prenotazione:'Prenotazione' };
-  const CATEGORIA_FULL = Object.assign({ carburante:'Carburante' }, CATEGORIA_LABEL);
-  const CATEGORIE_KEYS = ['carburante', ...Object.keys(CATEGORIA_LABEL)];
+  const CATEGORIA_FULL = Object.assign({}, CATEGORIA_LABEL);
+  const CATEGORIE_KEYS = Object.keys(CATEGORIA_LABEL);
   const GROUP_LABEL = { nessuno:'Totale periodo', giorno:'Giorno', settimana:'Settimana', mese:'Mese', metodo:'Metodo pagamento', tipologia:'Tipologia corsa', categoria:'Categoria spesa' };
   const TIME_GROUPS = ['giorno','settimana','mese'];
   const DIM_GROUPS = ['metodo','tipologia','categoria'];
@@ -1878,7 +1960,7 @@
         if(e.kind==='entrata'){
           if(filter.tipologia.length && !filter.tipologia.includes(e.tipo)) continue;
         } else {
-          const cat = e.tipo==='carburante' ? 'carburante' : (e.sottocategoria||'altro');
+          const cat = spesaCategoria(e);
           if(filter.categorie.length && !filter.categorie.includes(cat)) continue;
         }
         out.push({ dateKey:key, kind:e.kind, tipo:e.tipo, sottocategoria:e.sottocategoria, metodo:e.metodo, importo:e.importo });
@@ -1915,7 +1997,7 @@
         add(mv.tipo, TIPOLOGIA_FULL[mv.tipo]||mv.tipo, TIPOLOGIA_FULL[mv.tipo]||mv.tipo, mv);
       } else if(groupBy==='categoria'){
         if(mv.kind!=='spesa') return;
-        const cat = mv.tipo==='carburante' ? 'carburante' : (mv.sottocategoria||'altro');
+        const cat = spesaCategoria(mv);
         add(cat, CATEGORIA_FULL[cat]||cat, CATEGORIA_FULL[cat]||cat, mv);
       }
     });
@@ -2060,7 +2142,7 @@
           <div class="report-actions">
             <button data-act="rename" data-id="${rep.id}">${isRenaming?'✓':'✎'}</button>
             <button data-act="copy" data-id="${rep.id}">⧉</button>
-            <button class="danger${confirmDelReportId===rep.id?' confirm':''}" data-act="del" data-id="${rep.id}">${confirmDelReportId===rep.id?'ELIMINA':'✕'}</button>
+            <button class="danger" data-act="del" data-id="${rep.id}">✕</button>
           </div>`;
         row.appendChild(head);
         const toggle = document.createElement('div'); toggle.className='report-toggle';
@@ -2107,11 +2189,12 @@
     card.querySelectorAll('[data-act="del"]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const id = btn.dataset.id;
-        if(confirmDelReportId===id){
-          state.reports = state.reports.filter(r=>r.id!==id);
-          confirmDelReportId = null;
-          await saveState();
-        } else { confirmDelReportId = id; }
+        const rep = state.reports.find(r=>r.id===id);
+        const nome = rep ? rep.nome : 'questo riepilogo';
+        const ok = await askConfirm('Eliminare il riepilogo?', `Stai per eliminare "${nome}". L\'operazione non è reversibile.`, 'Elimina');
+        if(!ok) return;
+        state.reports = state.reports.filter(r=>r.id!==id);
+        await saveState();
         renderMain();
       });
     });
@@ -2139,7 +2222,7 @@
 
   // ---------- Entry sheet ----------
   const overlay = document.getElementById('overlay');
-  let formKind='entrata', formTipo='radio', formTipoSpesa='carburante', formMetodo='carta', formAltroCat='bollo';
+  let formKind='entrata', formTipo='radio', formMetodo='carta', formAltroCat='carburante';
   let editingEntryId = null;
 
   function openEntrySheet(existingEntry){
@@ -2149,15 +2232,14 @@
 
     if(existingEntry){
       formKind = existingEntry.kind;
-      if(formKind==='entrata'){ formTipo = existingEntry.tipo || 'posteggio'; formTipoSpesa='carburante'; }
-      else { formTipoSpesa = existingEntry.tipo || 'carburante'; formTipo='radio'; }
+      if(formKind==='entrata'){ formTipo = existingEntry.tipo || 'radio'; formAltroCat='carburante'; }
+      else { formTipo='radio'; formAltroCat = existingEntry.sottocategoria || existingEntry.tipo || 'carburante'; }
       formMetodo = existingEntry.metodo || 'contanti';
-      formAltroCat = existingEntry.sottocategoria || 'bollo';
       document.getElementById('amtInput').value = existingEntry.importo.toFixed(2).replace('.', ',');
       document.getElementById('noteInput').value = existingEntry.nota || '';
       document.getElementById('timeInput').value = existingEntry.time || nowTimeStr();
     } else {
-      formKind='entrata'; formTipo='radio'; formTipoSpesa='carburante'; formMetodo='carta'; formAltroCat='bollo';
+      formKind='entrata'; formTipo='radio'; formMetodo='carta'; formAltroCat='carburante';
       document.getElementById('amtInput').value='';
       document.getElementById('noteInput').value='';
       document.getElementById('timeInput').value = isSameDay(viewDate,new Date()) ? nowTimeStr() : '12:00';
@@ -2165,11 +2247,9 @@
     document.getElementById('altroCatSelect').value = formAltroCat;
     document.querySelectorAll('#kindChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.kind===formKind));
     document.querySelectorAll('#tipoChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.tipo===formTipo));
-    document.querySelectorAll('#tipoSpesaChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.tiposp===formTipoSpesa));
     document.querySelectorAll('#metodoChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.metodo===formMetodo));
     document.getElementById('tipoChips').style.display = formKind==='entrata' ? 'flex' : 'none';
-    document.getElementById('tipoSpesaChips').style.display = formKind==='spesa' ? 'flex' : 'none';
-    document.getElementById('altroCatRow').style.display = (formKind==='spesa' && formTipoSpesa==='altro') ? 'block' : 'none';
+    document.getElementById('altroCatRow').style.display = formKind==='spesa' ? 'block' : 'none';
     overlay.classList.add('show');
     if(!existingEntry) setTimeout(()=>document.getElementById('amtInput').focus(), 250);
   }
@@ -2188,19 +2268,11 @@
       formKind = chip.dataset.kind;
       document.querySelectorAll('#kindChips .chip').forEach(c=>c.classList.toggle('active', c===chip));
       document.getElementById('tipoChips').style.display = formKind==='entrata' ? 'flex' : 'none';
-      document.getElementById('tipoSpesaChips').style.display = formKind==='spesa' ? 'flex' : 'none';
-      document.getElementById('altroCatRow').style.display = (formKind==='spesa' && formTipoSpesa==='altro') ? 'block' : 'none';
+      document.getElementById('altroCatRow').style.display = formKind==='spesa' ? 'block' : 'none';
     });
   });
   document.querySelectorAll('#tipoChips .chip').forEach(chip=>{
     chip.addEventListener('click', ()=>{ formTipo = chip.dataset.tipo; document.querySelectorAll('#tipoChips .chip').forEach(c=>c.classList.toggle('active', c===chip)); });
-  });
-  document.querySelectorAll('#tipoSpesaChips .chip').forEach(chip=>{
-    chip.addEventListener('click', ()=>{
-      formTipoSpesa = chip.dataset.tiposp;
-      document.querySelectorAll('#tipoSpesaChips .chip').forEach(c=>c.classList.toggle('active', c===chip));
-      document.getElementById('altroCatRow').style.display = formTipoSpesa==='altro' ? 'block' : 'none';
-    });
   });
   document.getElementById('altroCatSelect').addEventListener('change', (e)=>{ formAltroCat = e.target.value; });
   document.querySelectorAll('#metodoChips .chip').forEach(chip=>{
@@ -2215,8 +2287,8 @@
     const d = ensureDay(dayKey2);
     const payload = {
       kind: formKind,
-      tipo: formKind==='entrata' ? formTipo : formTipoSpesa,
-      sottocategoria: (formKind==='spesa' && formTipoSpesa==='altro') ? formAltroCat : null,
+      tipo: formKind==='entrata' ? formTipo : 'spesa',
+      sottocategoria: formKind==='spesa' ? formAltroCat : null,
       metodo: formMetodo, importo: amt,
       time: document.getElementById('timeInput').value || nowTimeStr(),
       nota: document.getElementById('noteInput').value.trim()
@@ -2236,8 +2308,8 @@
   // ---------- Deadline sheet ----------
   const overlayDl = document.getElementById('overlayDeadline');
   let dlCat = 'patente';
-  function openDeadlineSheet(){
-    dlCat='patente';
+  function openDeadlineSheet(presetCat){
+    dlCat = presetCat || 'patente';
     document.getElementById('dlTitolo').value='';
     document.getElementById('dlNota').value='';
     document.getElementById('dlData').value='';
