@@ -878,6 +878,16 @@
       wrap.appendChild(pf);
     }
 
+    if(day.shiftStart && !isPaused){
+      const pauseRow = document.createElement('div'); pauseRow.className='field'; pauseRow.style.marginTop='12px';
+      pauseRow.innerHTML = `<label>Minuti di pausa nel turno</label><input type="number" inputmode="numeric" id="pauseMinsInput" value="${day.pausedMinutes||0}">`;
+      wrap.appendChild(pauseRow);
+      pauseRow.querySelector('#pauseMinsInput').addEventListener('change', (e)=> setPauseMinutesManual(dayKey, e.target.value));
+      const pauseNote = document.createElement('div'); pauseNote.className='subnote';
+      pauseNote.textContent = 'Correggi qui i minuti di pausa se hai dimenticato di riprendere il turno.';
+      wrap.appendChild(pauseNote);
+    }
+
     if(isToday && (isRunning || isPaused)){
       const actions = document.createElement('div'); actions.className='shift-actions';
       if(isRunning){
@@ -1040,6 +1050,22 @@
     }
     day.shiftEnd = dt.toISOString();
     showToast('Orario di fine aggiornato');
+    await saveState(); renderMain();
+  }
+  async function setPauseMinutesManual(dayKey, val){
+    const day = ensureDay(dayKey);
+    let mins = parseInt(val, 10);
+    if(isNaN(mins) || mins < 0) mins = 0;
+    // La pausa non può superare la durata lorda del turno
+    if(day.shiftStart){
+      const endPoint = day.shiftEnd ? new Date(day.shiftEnd).getTime() : Date.now();
+      const rawMin = Math.max(0, Math.round((endPoint - new Date(day.shiftStart).getTime())/60000));
+      if(mins > rawMin){
+        mins = rawMin;
+        showToast('Pausa limitata alla durata del turno');
+      }
+    }
+    day.pausedMinutes = mins;
     await saveState(); renderMain();
   }
 
