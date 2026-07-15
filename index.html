@@ -189,7 +189,7 @@
   .card .subnote{font-size:11.5px; color:var(--ink-faint); margin-top:6px; line-height:1.5;}
 
   .km-grid{display:flex; gap:10px; align-items:flex-end;}
-  .field{flex:1;}
+  .field{flex:1; min-width:0;}
   .field label{display:block; font-size:11px; color:var(--ink-faint); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;}
   .field input{width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:16px; padding:10px; border-radius:9px;}
   .field input:focus{outline:none; border-color:var(--amber-line);}
@@ -1744,8 +1744,8 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     const c4b = document.createElement('div'); c4b.className='card';
     c4b.innerHTML = `<h2>Chilometri ${year} · lavoro vs personali</h2>`;
     const kmGrid = document.createElement('div'); kmGrid.className='km-grid';
-    kmGrid.innerHTML = `<div class="field"><label>Km contachilometri a inizio anno</label><input type="number" id="kmIniInput" value="${kmIniEff!==null ? kmIniEff : ''}" placeholder="es. 84200"></div>
-      <div class="field"><label>Km contachilometri a fine anno (o attuale)</label><input type="number" id="kmFinInput" value="${typeof yRec.kmFinale==='number' ? yRec.kmFinale : ''}" placeholder="es. 97650"></div>`;
+    kmGrid.innerHTML = `<div class="field"><label>Km a inizio anno</label><input type="number" id="kmIniInput" value="${kmIniEff!==null ? kmIniEff : ''}" placeholder="es. 84200"></div>
+      <div class="field"><label>Km a fine anno (o attuale)</label><input type="number" id="kmFinInput" value="${typeof yRec.kmFinale==='number' ? yRec.kmFinale : ''}" placeholder="es. 97650"></div>`;
     c4b.appendChild(kmGrid);
     const kmResultWrap = document.createElement('div');
     c4b.appendChild(kmResultWrap);
