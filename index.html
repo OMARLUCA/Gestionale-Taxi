@@ -1507,31 +1507,27 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     return new Blob([bytes], { type: 'application/pdf' });
   }
 
-  // In modalità standalone (icona sulla Home) non esiste l'interfaccia di download di Safari,
-  // quindi <a download> non ha nulla a cui appoggiarsi e non fa nulla. Si usa invece il foglio
-  // di condivisione nativo di iOS (Web Share API), che funziona anche in standalone.
-  // Su desktop, dove lo share dei file spesso non è supportato, si torna al download classico.
-  async function openPreparedPdf(blob, filename){
-    try{
-      const file = new File([blob], filename, { type: 'application/pdf' });
-      if(navigator.canShare && navigator.canShare({ files: [file] })){
-        await navigator.share({ files: [file] });
-        return;
-      }
-    }catch(e){
-      if(e && e.name === 'AbortError') return; // l'utente ha chiuso il foglio di condivisione
-    }
+  // Un click generato da JavaScript su un elemento creato al volo viene trattato diversamente
+  // da un vero tocco dell'utente in modalità standalone (icona sulla Home): spesso non succede
+  // nulla. Per questo, invece di simulare il click, si sostituisce il pulsante con un vero link
+  // <a> visibile, che l'utente tocca di persona — un tocco genuino, non simulato via codice.
+  function replaceWithOpenLink(btn, blob, filename){
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url; a.download = filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+    a.className = btn.className;
+    a.style.cssText = btn.style.cssText;
+    a.style.display = 'block';
+    a.style.textAlign = 'center';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.textContent = '📄 Tocca qui per aprire il PDF';
+    btn.replaceWith(a);
   }
 
   async function exportModuloMese(year, month, btn){
     if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
     if(!state.settings.registro.conducente){ showToast('Imposta prima l\'intestazione del registro'); openRegistroSheet(); return; }
-    const originalLabel = btn.textContent;
     btn.disabled = true;
     showToast('Genero il PDF…');
     const pdfDoc = await fillCorrispettiviTemplate(year, month);
@@ -1539,16 +1535,13 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     const blob = bytesToBlob(bytes);
     const filename = `corrispettivi-${MESI[month]}-${year}.pdf`;
     btn.disabled = false;
-    btn.textContent = '📄 Tocca per aprire il PDF';
-    btn.dataset.ready = '1';
-    btn._pendingPdf = { blob, filename, originalLabel };
-    showToast('PDF pronto, tocca di nuovo per aprirlo');
+    replaceWithOpenLink(btn, blob, filename);
+    showToast('PDF pronto, tocca il link per aprirlo');
   }
 
   async function exportLibroAnnoUfficiale(year, btn){
     if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
     if(!state.settings.registro.conducente){ showToast('Imposta prima l\'intestazione del registro'); openRegistroSheet(); return; }
-    const originalLabel = btn.textContent;
     btn.disabled = true;
     showToast('Genero il libro annuale…');
     const { PDFDocument } = PDFLib;
@@ -1562,10 +1555,8 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     const blob = bytesToBlob(bytes);
     const filename = `libro-corrispettivi-${year}.pdf`;
     btn.disabled = false;
-    btn.textContent = '📄 Tocca per aprire il libro';
-    btn.dataset.ready = '1';
-    btn._pendingPdf = { blob, filename, originalLabel };
-    showToast('Libro pronto, tocca di nuovo per aprirlo');
+    replaceWithOpenLink(btn, blob, filename);
+    showToast('Libro pronto, tocca il link per aprirlo');
   }
 
   function renderCorrispettivi(container){
@@ -1639,23 +1630,9 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     });
     regCard.querySelector('#editRegistroBtn').addEventListener('click', openRegistroSheet);
     regCard.querySelector('#exportModuloMese').addEventListener('click', function(){
-      if(this.dataset.ready==='1' && this._pendingPdf){
-        openPreparedPdf(this._pendingPdf.blob, this._pendingPdf.filename);
-        this.textContent = this._pendingPdf.originalLabel;
-        this.dataset.ready = '';
-        this._pendingPdf = null;
-        return;
-      }
       exportModuloMese(y, m, this);
     });
     regCard.querySelector('#exportLibroAnno').addEventListener('click', function(){
-      if(this.dataset.ready==='1' && this._pendingPdf){
-        openPreparedPdf(this._pendingPdf.blob, this._pendingPdf.filename);
-        this.textContent = this._pendingPdf.originalLabel;
-        this.dataset.ready = '';
-        this._pendingPdf = null;
-        return;
-      }
       exportLibroAnnoUfficiale(y, this);
     });
 
