@@ -296,7 +296,7 @@
   .report-body{margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); font-family:'JetBrains Mono', monospace; font-size:12.5px; white-space:pre-wrap; line-height:1.6; color:var(--ink);}
   .report-toggle{font-size:11.5px; color:var(--amber-ink); margin-top:10px; cursor:pointer; font-weight:600;}
 
-  .overlay#overlayConfirm, .overlay#overlayPassword{align-items:center;}
+  .overlay#overlayConfirm{align-items:center;}
   .overlay{position:fixed; inset:0; background:rgba(30,26,10,0.45); z-index:40; display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity .2s;}
   .overlay.show{opacity:1; pointer-events:auto;}
   .sheet{background:var(--surface); width:100%; border-radius:20px 20px 0 0; padding:18px 18px calc(20px + var(--safe-bottom)); border-top:1px solid var(--border); transform:translateY(100%); transition:transform .25s ease; max-height:88vh; overflow-y:auto;}
@@ -600,16 +600,6 @@
       <div class="input-row"><label>% detrazione</label><input type="number" id="setDetrMed"></div>
     </div>
 
-    <div class="settings-section">
-      <h4>Modulo PDF corrispettivi</h4>
-      <div class="method-toggle-row">
-        <span class="name">Usa modello alternativo</span>
-        <label class="switch"><input type="checkbox" id="setPdfAltEnabled"><span class="track"></span><span class="thumb"></span></label>
-      </div>
-      <button class="save-btn" id="changePdfAltPasswordBtn" style="margin-top:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">Cambia password modello alternativo</button>
-      <div class="subnote">Spento: generi sempre il modulo generico, senza chiedere nulla. Acceso: alla generazione ti verrà chiesta la password. Per cambiarla devi prima inserire quella attuale.</div>
-    </div>
-
     <button class="save-btn" id="saveSettings">Salva impostazioni</button>
   </div>
 </div>
@@ -621,18 +611,6 @@
     <div style="display:flex; gap:10px;">
       <button class="save-btn" id="confirmCancel" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">Annulla</button>
       <button class="save-btn" id="confirmOk" style="background:var(--red);">Elimina</button>
-    </div>
-  </div>
-</div>
-
-<div class="overlay" id="overlayPassword">
-  <div class="sheet" style="border-radius:20px; margin:auto 14px; max-width:420px; align-self:center;">
-    <div class="sheet-head"><h3 id="pwTitle">Accesso protetto</h3><button id="pwClose">✕</button></div>
-    <div id="pwMsg" style="font-size:14px; color:var(--ink-muted); line-height:1.5; margin-bottom:14px;"></div>
-    <div class="form-row"><input type="password" id="pwInput" placeholder="Password" autocomplete="off"></div>
-    <div style="display:flex; gap:10px;">
-      <button class="save-btn" id="pwCancel" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">Annulla</button>
-      <button class="save-btn" id="pwOk">Conferma</button>
     </div>
   </div>
 </div>
@@ -715,8 +693,6 @@
     inpsRiduzione35: true,
     franchigiaMediche: 129.11,
     detrMedichePerc: 19,
-    pdfAltEnabled: false,
-    pdfAltPassword: '4d3l3S4rd4',
     registro: { conducente:'', indirizzo:'', citta:'', vettura1:'', targa1:'', civ1:'', alim1:'', vettura2:'', targa2:'', civ2:'', alim2:'', codUtente:'' }
   };
   const GESTIONE_DEFAULTS = {
@@ -809,28 +785,6 @@
   document.getElementById('confirmCancel').addEventListener('click', ()=> closeConfirm(false));
   document.getElementById('confirmClose').addEventListener('click', ()=> closeConfirm(false));
   document.getElementById('overlayConfirm').addEventListener('click', (e)=>{ if(e.target.id==='overlayConfirm') closeConfirm(false); });
-
-  let pwResolve = null;
-  function askPassword(title, message){
-    return new Promise((resolve)=>{
-      pwResolve = resolve;
-      document.getElementById('pwTitle').textContent = title || 'Accesso protetto';
-      document.getElementById('pwMsg').textContent = message || 'Inserisci la password per continuare.';
-      const input = document.getElementById('pwInput');
-      input.value = '';
-      document.getElementById('overlayPassword').classList.add('show');
-      setTimeout(()=> input.focus(), 50);
-    });
-  }
-  function closePassword(result){
-    document.getElementById('overlayPassword').classList.remove('show');
-    if(pwResolve){ const r = pwResolve; pwResolve = null; r(result); }
-  }
-  document.getElementById('pwOk').addEventListener('click', ()=> closePassword(document.getElementById('pwInput').value));
-  document.getElementById('pwCancel').addEventListener('click', ()=> closePassword(null));
-  document.getElementById('pwClose').addEventListener('click', ()=> closePassword(null));
-  document.getElementById('overlayPassword').addEventListener('click', (e)=>{ if(e.target.id==='overlayPassword') closePassword(null); });
-  document.getElementById('pwInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') closePassword(e.target.value); });
 
   // ---------- Header ----------
   function renderHeader(){
@@ -1549,102 +1503,65 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     return pdfDoc;
   }
 
-  function downloadBytes(bytes, filename){
+  async function bytesToDataUri(bytes){
     const blob = new Blob([bytes], { type: 'application/pdf' });
-    const reader = new FileReader();
-    reader.onload = function(){
-      const a = document.createElement('a');
-      a.href = reader.result;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    };
-    reader.readAsDataURL(blob);
+    return new Promise((resolve)=>{
+      const reader = new FileReader();
+      reader.onload = ()=> resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
   }
 
-  // Modello generico: nessun file esterno, usato di default per tutti.
-  async function fillGenericTemplate(year, month){
-    const { PDFDocument, StandardFonts, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595.28, 841.89]);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const black = rgb(0,0,0);
-    const marginX = 50;
-    let y = 792;
-
-    page.drawText('Registro corrispettivi', { x: marginX, y, size: 16, font: bold, color: black }); y -= 22;
-    page.drawText(`${MESI_FULL[month]} ${year}`, { x: marginX, y, size: 12, font, color: black }); y -= 20;
-
-    const r = state.settings.registro;
-    if(r.conducente){ page.drawText(`Conducente: ${r.conducente}`, { x: marginX, y, size: 10, font, color: black }); y -= 14; }
-    if(r.vettura1){ page.drawText(`Vettura: ${r.vettura1}${r.targa1?(' - '+r.targa1):''}`, { x: marginX, y, size: 10, font, color: black }); y -= 14; }
-    y -= 10;
-
-    page.drawText('Data', { x: marginX, y, size: 10, font: bold, color: black });
-    page.drawText('Corrispettivo (€)', { x: marginX+200, y, size: 10, font: bold, color: black });
-    y -= 4;
-    page.drawLine({ start:{x:marginX, y}, end:{x:545, y}, thickness:0.5, color: black }); y -= 14;
-
-    const daysInMonth = new Date(year, month+1, 0).getDate();
-    let total = 0;
-    for(let d=1; d<=daysInMonth; d++){
-      const dk = dateKey(new Date(year, month, d));
-      const eff = corrispettivoEffettivoGiorno(dk);
-      total += eff;
-      if(y < 60){ page.drawText('(segue…)', { x:marginX, y, size:9, font, color: black }); break; }
-      page.drawText(`${pad(d)}/${pad(month+1)}/${year}`, { x: marginX, y, size: 9, font, color: black });
-      page.drawText(fmtMoney(eff), { x: marginX+200, y, size: 9, font, color: black });
-      y -= 13;
-    }
-    y -= 8;
-    page.drawLine({ start:{x:marginX, y}, end:{x:545, y}, thickness:0.5, color: black }); y -= 16;
-    page.drawText('Totale', { x: marginX, y, size: 11, font: bold, color: black });
-    page.drawText(`${fmtMoney(total)} €`, { x: marginX+200, y, size: 11, font: bold, color: black });
-
-    return pdfDoc;
+  // iOS blocca l'apertura/il salvataggio se passa troppo tempo asincrono tra il tocco
+  // dell'utente e il click sul link: per questo il PDF si prepara prima, poi un SECONDO
+  // tocco (immediato, senza await in mezzo) lo apre davvero.
+  function openPreparedPdf(dataUri, filename){
+    const a = document.createElement('a');
+    a.href = dataUri;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
-  // Se il flag "modello alternativo" è spento (default), si usa sempre il modello generico, senza chiedere nulla.
-  // Se è acceso, all'esportazione si apre il popup password: se corrisponde a quella impostata,
-  // si usa il modello alternativo; altrimenti errore. Annullare il popup interrompe l'esportazione.
-  async function chooseCorrTemplate(){
-    if(!state.settings.pdfAltEnabled) return { generic:true };
-    const inserted = await askPassword('Modello alternativo', 'Inserisci la password impostata in Impostazioni ⚙ per usare il modello alternativo.');
-    if(inserted===null) return null;
-    if(inserted !== state.settings.pdfAltPassword){ showToast('Password errata'); return null; }
-    return { generic:false };
-  }
-
-  async function exportModuloMese(year, month){
+  async function exportModuloMese(year, month, btn){
     if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
     if(!state.settings.registro.conducente){ showToast('Imposta prima l\'intestazione del registro'); openRegistroSheet(); return; }
-    const choice = await chooseCorrTemplate();
-    if(!choice) return;
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
     showToast('Genero il PDF…');
-    const pdfDoc = choice.generic ? await fillGenericTemplate(year, month) : await fillCorrispettiviTemplate(year, month);
+    const pdfDoc = await fillCorrispettiviTemplate(year, month);
     const bytes = await pdfDoc.save();
-    downloadBytes(bytes, `corrispettivi-${MESI[month]}-${year}.pdf`);
-    showToast('PDF pronto');
+    const dataUri = await bytesToDataUri(bytes);
+    const filename = `corrispettivi-${MESI[month]}-${year}.pdf`;
+    btn.disabled = false;
+    btn.textContent = '📄 Tocca per aprire il PDF';
+    btn.dataset.ready = '1';
+    btn._pendingPdf = { dataUri, filename, originalLabel };
+    showToast('PDF pronto, tocca di nuovo per aprirlo');
   }
 
-  async function exportLibroAnnoUfficiale(year){
+  async function exportLibroAnnoUfficiale(year, btn){
     if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
     if(!state.settings.registro.conducente){ showToast('Imposta prima l\'intestazione del registro'); openRegistroSheet(); return; }
-    const choice = await chooseCorrTemplate();
-    if(!choice) return;
+    const originalLabel = btn.textContent;
+    btn.disabled = true;
     showToast('Genero il libro annuale…');
     const { PDFDocument } = PDFLib;
     const outDoc = await PDFDocument.create();
     for(let mo=0; mo<12; mo++){
-      const filled = choice.generic ? await fillGenericTemplate(year, mo) : await fillCorrispettiviTemplate(year, mo);
+      const filled = await fillCorrispettiviTemplate(year, mo);
       const [copiedPage] = await outDoc.copyPages(filled, [0]);
       outDoc.addPage(copiedPage);
     }
     const bytes = await outDoc.save();
-    downloadBytes(bytes, `libro-corrispettivi-${year}.pdf`);
-    showToast('Libro annuale pronto');
+    const dataUri = await bytesToDataUri(bytes);
+    const filename = `libro-corrispettivi-${year}.pdf`;
+    btn.disabled = false;
+    btn.textContent = '📄 Tocca per aprire il libro';
+    btn.dataset.ready = '1';
+    btn._pendingPdf = { dataUri, filename, originalLabel };
+    showToast('Libro pronto, tocca di nuovo per aprirlo');
   }
 
   function renderCorrispettivi(container){
@@ -1717,8 +1634,26 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
       mTO = setTimeout(async ()=>{ const mr = ensureMonth(mkeyC); mr.ferieGiorni = isNaN(val)?0:val; await saveState(); renderMain(); }, 500);
     });
     regCard.querySelector('#editRegistroBtn').addEventListener('click', openRegistroSheet);
-    regCard.querySelector('#exportModuloMese').addEventListener('click', ()=> exportModuloMese(y, m));
-    regCard.querySelector('#exportLibroAnno').addEventListener('click', ()=> exportLibroAnnoUfficiale(y));
+    regCard.querySelector('#exportModuloMese').addEventListener('click', function(){
+      if(this.dataset.ready==='1' && this._pendingPdf){
+        openPreparedPdf(this._pendingPdf.dataUri, this._pendingPdf.filename);
+        this.textContent = this._pendingPdf.originalLabel;
+        this.dataset.ready = '';
+        this._pendingPdf = null;
+        return;
+      }
+      exportModuloMese(y, m, this);
+    });
+    regCard.querySelector('#exportLibroAnno').addEventListener('click', function(){
+      if(this.dataset.ready==='1' && this._pendingPdf){
+        openPreparedPdf(this._pendingPdf.dataUri, this._pendingPdf.filename);
+        this.textContent = this._pendingPdf.originalLabel;
+        this.dataset.ready = '';
+        this._pendingPdf = null;
+        return;
+      }
+      exportLibroAnnoUfficiale(y, this);
+    });
 
     const listCard = document.createElement('div'); listCard.className='card';
     listCard.innerHTML = `<h2>Giorno per giorno</h2>`;
@@ -2669,23 +2604,11 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     document.getElementById('setRiduzione').checked = state.settings.inpsRiduzione35;
     document.getElementById('setFranchigia').value = state.settings.franchigiaMediche;
     document.getElementById('setDetrMed').value = state.settings.detrMedichePerc;
-    document.getElementById('setPdfAltEnabled').checked = state.settings.pdfAltEnabled;
     overlaySet.classList.add('show');
   }
   document.getElementById('gearBtn').addEventListener('click', openSettingsSheet);
   document.getElementById('closeSheetSet').addEventListener('click', ()=>overlaySet.classList.remove('show'));
   overlaySet.addEventListener('click', (e)=>{ if(e.target===overlaySet) overlaySet.classList.remove('show'); });
-  document.getElementById('changePdfAltPasswordBtn').addEventListener('click', async ()=>{
-    const current = await askPassword('Cambia password', 'Inserisci la password attuale del modello alternativo.');
-    if(current===null) return;
-    if(current !== state.settings.pdfAltPassword){ showToast('Password attuale errata'); return; }
-    const next = await askPassword('Nuova password', 'Inserisci la nuova password.');
-    if(next===null) return;
-    if(!next){ showToast('La password non può essere vuota'); return; }
-    state.settings.pdfAltPassword = next;
-    await saveState();
-    showToast('Password aggiornata');
-  });
   document.getElementById('setGestione').addEventListener('change', (e)=>{
     const g = GESTIONE_DEFAULTS[e.target.value];
     if(g){ document.getElementById('setFisso').value = g.fisso; document.getElementById('setAliquotaEcc').value = g.aliquotaEcc; }
@@ -2703,7 +2626,6 @@ const CORR_TEMPLATE_B64 = "JVBERi0xLjMKJcTl8uXrp/Og0MTGCjMgMCBvYmoKPDwgL0ZpbHRlc
     state.settings.inpsRiduzione35 = document.getElementById('setRiduzione').checked;
     state.settings.franchigiaMediche = parseFloat(document.getElementById('setFranchigia').value) || 0;
     state.settings.detrMedichePerc = parseFloat(document.getElementById('setDetrMed').value) || 0;
-    state.settings.pdfAltEnabled = document.getElementById('setPdfAltEnabled').checked;
     await saveState();
     overlaySet.classList.remove('show');
     showToast('Impostazioni salvate');
