@@ -1100,6 +1100,32 @@
     document.getElementById('kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleSave(); });
   }
 
+  function renderDeleteDayCard(container, dayKey){
+    const hasData = !!state.days[dayKey];
+    const card = document.createElement('div'); card.className='card';
+    card.innerHTML = `<h2>Zona pericolosa</h2>`;
+    const btn = document.createElement('button');
+    btn.className = 'save-btn';
+    btn.style.cssText = 'background:var(--red-soft); color:var(--red); border:1px solid var(--red-line);';
+    btn.textContent = '🗑 Cancella tutti i dati di questo giorno';
+    if(!hasData){ btn.disabled = true; btn.style.opacity = '0.45'; }
+    card.appendChild(btn);
+    const note = document.createElement('div'); note.className='subnote'; note.style.marginTop='8px';
+    note.textContent = 'Cancella corse, spese, orari turno e km di questo giorno. Dopo la cancellazione il giorno non verrà più conteggiato come lavorato in nessuna statistica, presenza o grafico. Non è annullabile.';
+    card.appendChild(note);
+    container.appendChild(card);
+    if(!hasData) return;
+    btn.addEventListener('click', async ()=>{
+      const label = `${viewDate.getDate()} ${MESI_FULL[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
+      const ok = await askConfirm('Cancella giorno', `Vuoi cancellare definitivamente tutti i dati del ${label}? Corse, spese, orari e km andranno persi e il giorno non risulterà più lavorato da nessuna parte. Non si può annullare.`, 'Cancella');
+      if(!ok) return;
+      delete state.days[dayKey];
+      await saveState();
+      showToast('Giorno cancellato');
+      renderMain();
+    });
+  }
+
   // ---------- Entries list ----------
   const TIPO_LABEL = { posteggio:'PST', radio:'RDO', prenotazione:'PRN', carburante:'CAR', altro:'ALT' };
   const CATEGORIA_LABEL = {
@@ -1166,10 +1192,10 @@
     const baseY = H-padBottom;
     const areaPath = `${linePath} L ${points[points.length-1].x},${baseY} L ${points[0].x},${baseY} Z`;
     const peakHour = avg.indexOf(maxVal);
-    const ticks = [0,6,12,18,23];
+    const ticks = Array.from({length:24}, (_,h)=>h);
     const tickLabels = ticks.map(h=>{
       const x = padX + (h/23)*(W-2*padX);
-      return `<text x="${x}" y="${H-6}" font-size="11" fill="var(--ink-faint)" text-anchor="middle">${pad(h)}</text>`;
+      return `<text x="${x}" y="${H-6}" font-size="9" fill="var(--ink-faint)" text-anchor="middle">${h}</text>`;
     }).join('');
     const svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:150px; display:block;">
       <defs><linearGradient id="waveFill" x1="0" y1="0" x2="0" y2="1">
@@ -2371,7 +2397,7 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
 
     document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi') ? 'none' : 'flex';
 
-    if(activeTab==='oggi'){ renderScadenzeAlert(main); renderShiftCapsule(main, dayKey, day, isToday); renderKmCard(main, dayKey, day); }
+    if(activeTab==='oggi'){ renderScadenzeAlert(main); renderShiftCapsule(main, dayKey, day, isToday); renderKmCard(main, dayKey, day); renderDeleteDayCard(main, dayKey); }
     else if(activeTab==='corse'){ renderHourlyProductivityCard(main); renderEntriesCard(main, dayKey, day, false); }
     else if(activeTab==='tasse'){ renderTasse(main); }
     else if(activeTab==='scadenze'){ renderScadenze(main); }
