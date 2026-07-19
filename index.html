@@ -239,7 +239,7 @@
   .stat-box .val.red{color:var(--red);}
 
   .breakdown-row{display:flex; align-items:center; gap:10px; margin-top:10px;}
-  .breakdown-row .lbl{width:88px; font-size:12px; color:var(--ink-muted); flex-shrink:0;}
+  .breakdown-row .lbl{width:118px; font-size:12px; color:var(--ink-muted); flex-shrink:0;}
   .breakdown-row .bar-track{flex:1; height:8px; background:var(--surface-3); border-radius:5px; overflow:hidden;}
   .breakdown-row .bar-fill{height:100%; border-radius:5px;}
   .breakdown-row .bar-fill.posteggio{background:var(--amber);}
@@ -1247,6 +1247,17 @@
         card.appendChild(swipe);
       });
     }
+    const corseEntries = entries.filter(e=>e.kind==='entrata');
+    const elettroniciCount = corseEntries.filter(e=>e.metodo!=='contanti').length;
+    const contantiCount = corseEntries.filter(e=>e.metodo==='contanti').length;
+    const rec1 = document.createElement('div'); rec1.className='corse-stats'; rec1.style.marginTop='12px';
+    rec1.innerHTML = `<div class="stat"><span class="k">Totale spese</span><span class="v">${fmtMoney(spese)} €</span></div>
+      <div class="stat"><span class="k">Corse totali</span><span class="v">${corseEntries.length}</span></div>`;
+    card.appendChild(rec1);
+    const rec2 = document.createElement('div'); rec2.className='corse-stats';
+    rec2.innerHTML = `<div class="stat"><span class="k">Pag. elettronici</span><span class="v">${elettroniciCount}</span></div>
+      <div class="stat"><span class="k">Pag. contanti</span><span class="v">${contantiCount}</span></div>`;
+    card.appendChild(rec2);
     container.appendChild(card);
 
     let openRowContent = null;
@@ -1307,9 +1318,12 @@
     // returns totals over all days whose key starts with prefix (YYYY-MM or YYYY)
     let km=0, mins=0;
     const byTipo = { posteggio:0, radio:0, prenotazione:0 };
+    const byTipoCount = { posteggio:0, radio:0, prenotazione:0 };
     const byMetodoEntrata = {}; METODI.forEach(m=>byMetodoEntrata[m]=0);
+    const byMetodoEntrataCount = {}; METODI.forEach(m=>byMetodoEntrataCount[m]=0);
     const byCategoria = {};
-    let carburanteReale=0, altreSpese=0, entrate=0, speseTot=0;
+    const byCategoriaCount = {};
+    let carburanteReale=0, carburanteCartaReale=0, altreSpese=0, entrate=0, speseTot=0;
     for(const [key, day] of Object.entries(state.days)){
       if(!key.startsWith(prefix)) continue;
       if(typeof day.kmStart==='number' && typeof day.kmEnd==='number' && day.kmEnd>=day.kmStart) km += (day.kmEnd-day.kmStart);
@@ -1317,18 +1331,19 @@
       for(const e of (day.entries||[])){
         if(e.kind==='entrata'){
           entrate += e.importo;
-          if(byTipo.hasOwnProperty(e.tipo)) byTipo[e.tipo]+=e.importo;
-          if(byMetodoEntrata.hasOwnProperty(e.metodo)) byMetodoEntrata[e.metodo]+=e.importo;
+          if(byTipo.hasOwnProperty(e.tipo)){ byTipo[e.tipo]+=e.importo; byTipoCount[e.tipo]++; }
+          if(byMetodoEntrata.hasOwnProperty(e.metodo)){ byMetodoEntrata[e.metodo]+=e.importo; byMetodoEntrataCount[e.metodo]++; }
         } else {
           speseTot += e.importo;
           const cat = spesaCategoria(e);
           byCategoria[cat] = (byCategoria[cat]||0) + e.importo;
-          if(cat==='carburante') carburanteReale += e.importo;
+          byCategoriaCount[cat] = (byCategoriaCount[cat]||0) + 1;
+          if(cat==='carburante'){ carburanteReale += e.importo; if(e.metodo==='carta') carburanteCartaReale += e.importo; }
           else altreSpese += e.importo;
         }
       }
     }
-    return { km, mins, byTipo, byMetodoEntrata, byCategoria, carburanteReale, altreSpese, entrate, speseTot };
+    return { km, mins, byTipo, byTipoCount, byMetodoEntrata, byMetodoEntrataCount, byCategoria, byCategoriaCount, carburanteReale, carburanteCartaReale, altreSpese, entrate, speseTot };
   }
 
   function aggregateRange(fromKey, toKey){
@@ -1387,7 +1402,7 @@
     [['radio','Radio'],['posteggio','Posteggio'],['prenotazione','Prenotazione']].forEach(([k,label])=>{
       const row = document.createElement('div'); row.className='breakdown-row';
       const pct = Math.round((m.byTipo[k]/maxV)*100);
-      row.innerHTML = `<div class="lbl">${label}</div><div class="bar-track"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(m.byTipo[k])} €</div>`;
+      row.innerHTML = `<div class="lbl">${label} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${m.byTipoCount[k]})</span></div><div class="bar-track"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(m.byTipo[k])} €</div>`;
       card2.appendChild(row);
     });
     container.appendChild(card2);
@@ -1398,7 +1413,7 @@
       const row = document.createElement('div'); row.className='breakdown-row';
       const pct = Math.round((m.byMetodoEntrata[mm]/maxM)*100);
       const cls = mm==='carta'?'radio':(mm==='contanti'?'prenotazione':'posteggio');
-      row.innerHTML = `<div class="lbl">${METODO_LABEL[mm]}</div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(m.byMetodoEntrata[mm])} €</div>`;
+      row.innerHTML = `<div class="lbl">${METODO_LABEL[mm]} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${m.byMetodoEntrataCount[mm]})</span></div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(m.byMetodoEntrata[mm])} €</div>`;
       card3.appendChild(row);
     });
     container.appendChild(card3);
@@ -1408,7 +1423,7 @@
       const card3b = document.createElement('div'); card3b.className='card'; card3b.innerHTML = `<h2>Spese per categoria · mese</h2>`;
       catEntries.forEach(([cat,val])=>{
         const r = document.createElement('div'); r.className='kv-row';
-        r.innerHTML = `<span class="k">${CATEGORIA_LABEL[cat]||'Spesa'}</span><span class="v">${fmtMoney(val)} €</span>`;
+        r.innerHTML = `<span class="k">${CATEGORIA_LABEL[cat]||'Spesa'} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${m.byCategoriaCount[cat]||0})</span></span><span class="v">${fmtMoney(val)} €</span>`;
         card3b.appendChild(r);
       });
       container.appendChild(card3b);
@@ -1446,13 +1461,14 @@
     METODI.forEach(m=>{ if(s.tracciato[m]) minima += agg.byMetodoEntrata[m]; });
     const mrec = getMonthReadonly(mkey);
     const dichiarazione = (typeof mrec.dichiarazioneOverride==='number' && mrec.dichiarazioneOverride>=0) ? mrec.dichiarazioneOverride : minima;
-    const coefficiente = agg.carburanteReale>0 ? (agg.entrate/agg.carburanteReale) : null;
+    const coefficiente = agg.carburanteCartaReale>0 ? (agg.entrate/agg.carburanteCartaReale) : null;
     const carburanteDichiarato = coefficiente ? (dichiarazione/coefficiente) : 0;
     return {
       incassoReale: agg.entrate,
       contatoreCash: agg.entrate - minima,
       minima, dichiarazione,
       carburanteReale: agg.carburanteReale,
+      carburanteCartaReale: agg.carburanteCartaReale,
       coefficiente, carburanteDichiarato,
       altreSpese: agg.altreSpese,
       speseMediche: mrec.speseMediche || 0
@@ -1845,10 +1861,11 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
 
     const c3 = document.createElement('div'); c3.className='card';
     c3.innerHTML = `<h2>Carburante</h2>
-      <div class="kv-row"><span class="k">Carburante reale (spese taggate)</span><span class="v">${fmtMoney(d.carburanteReale)} €</span></div>
+      <div class="kv-row"><span class="k">Carburante reale (totale, tutti i metodi)</span><span class="v">${fmtMoney(d.carburanteReale)} €</span></div>
+      <div class="kv-row"><span class="k">− di cui pagato con carta (usato nel calcolo)</span><span class="v">${fmtMoney(d.carburanteCartaReale)} €</span></div>
       <div class="kv-row"><span class="k">Coefficiente incasso/carburante</span><span class="v">${d.coefficiente ? d.coefficiente.toFixed(2) : '—'}</span></div>
       <div class="kv-row"><span class="k">Carburante da dichiarare</span><span class="v">${fmtMoney(d.carburanteDichiarato)} €</span></div>
-      <div class="subnote">Coefficiente = incasso reale ÷ carburante reale. Il carburante da dichiarare è la dichiarazione effettiva divisa per quel coefficiente.</div>`;
+      <div class="subnote">Nel calcolo conta solo il carburante pagato con carta, perché è quello scaricabile. Coefficiente = incasso reale ÷ carburante pagato con carta. Il carburante da dichiarare è la dichiarazione effettiva divisa per quel coefficiente.</div>`;
     container.appendChild(c3);
 
     const c4 = document.createElement('div'); c4.className='card';
