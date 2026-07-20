@@ -604,6 +604,14 @@
       <div class="input-row"><label>% detrazione</label><input type="number" id="setDetrMed"></div>
     </div>
 
+    <div class="settings-section">
+      <h4>Dati per PDF corse scansionate</h4>
+      <div class="form-row"><label>Nome e cognome</label><input type="text" id="setScanNome"></div>
+      <div class="form-row"><label>Sigla taxi</label><input type="text" id="setScanSigla"></div>
+      <div class="form-row"><label>Seriale</label><input type="text" id="setScanSeriale"></div>
+      <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
+    </div>
+
     <button class="save-btn" id="saveSettings">Salva impostazioni</button>
   </div>
 </div>
@@ -757,6 +765,7 @@
     inpsRiduzione35: true,
     franchigiaMediche: 129.11,
     detrMedichePerc: 19,
+    scanAnagrafica: { nome:'', sigla:'', seriale:'', iban:'' },
     registro: { conducente:'', indirizzo:'', citta:'', vettura1:'', targa1:'', civ1:'', alim1:'', vettura2:'', targa2:'', civ2:'', alim2:'', codUtente:'' }
   };
   const GESTIONE_DEFAULTS = {
@@ -811,6 +820,7 @@
         state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
         state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
         state.settings.registro = Object.assign({}, DEFAULT_SETTINGS.registro, (parsed.settings && parsed.settings.registro) || {});
+        state.settings.scanAnagrafica = Object.assign({}, DEFAULT_SETTINGS.scanAnagrafica, (parsed.settings && parsed.settings.scanAnagrafica) || {});
         // Migrazione: Aggeggio ora è come i contanti (non tracciato). Applicata una sola volta.
         if(!parsed.migratedAggeggio){
           state.settings.tracciato.aggeggio = false;
@@ -1827,6 +1837,80 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     }
   }
 
+  function truncateText(s, n){ s=s||''; return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  async function buildScansioniPdf(){
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const black = rgb(0,0,0);
+    const W = 595.28, H = 841.89, marginX = 45;
+    const colX = { data: marginX, ora: marginX+58, id: marginX+96, da: marginX+150, a: marginX+290, imp: W-marginX-55 };
+
+    let page = pdfDoc.addPage([W,H]);
+    let y = H - 50;
+    const anag = state.settings.scanAnagrafica || {};
+
+    page.drawText('Riepilogo corse', { x: marginX, y, size:18, font: bold, color: black }); y -= 24;
+    page.drawText(`Conducente: ${anag.nome||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
+    page.drawText(`Sigla taxi: ${anag.sigla||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
+    page.drawText(`Seriale: ${anag.seriale||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
+    page.drawText(`IBAN: ${anag.iban||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
+    page.drawText(`Generato il: ${new Date().toLocaleDateString('it-IT')}`, { x: marginX, y, size:9, font, color: rgb(0.4,0.4,0.4) }); y -= 22;
+
+    function drawHeaderRow(){
+      page.drawText('Data', {x:colX.data, y, size:9, font:bold, color:black});
+      page.drawText('Ora', {x:colX.ora, y, size:9, font:bold, color:black});
+      page.drawText('ID', {x:colX.id, y, size:9, font:bold, color:black});
+      page.drawText('Da', {x:colX.da, y, size:9, font:bold, color:black});
+      page.drawText('A', {x:colX.a, y, size:9, font:bold, color:black});
+      page.drawText('Importo', {x:colX.imp, y, size:9, font:bold, color:black});
+      y -= 5;
+      page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:0.7, color:black });
+      y -= 13;
+    }
+    drawHeaderRow();
+
+    const list = [...(state.scansioni||[])].sort((a,b)=> (a.data||'').localeCompare(b.data||'') || (a.ora||'').localeCompare(b.ora||''));
+    let totale = 0;
+    for(const e of list){
+      const importo = parseFloat(String(e.prezzo).replace(',','.'))||0;
+      totale += importo;
+      if(y < 60){
+        page = pdfDoc.addPage([W,H]);
+        y = H-50;
+        drawHeaderRow();
+      }
+      const dataFmt = e.data ? `${e.data.slice(8,10)}/${e.data.slice(5,7)}/${e.data.slice(2,4)}` : '—';
+      page.drawText(dataFmt, {x:colX.data, y, size:8.5, font, color:black});
+      page.drawText(e.ora||'—', {x:colX.ora, y, size:8.5, font, color:black});
+      page.drawText(truncateText(e.id,10), {x:colX.id, y, size:8.5, font, color:black});
+      page.drawText(truncateText(e.da,24), {x:colX.da, y, size:8.5, font, color:black});
+      page.drawText(truncateText(e.a,24), {x:colX.a, y, size:8.5, font, color:black});
+      page.drawText(fmtMoney(importo)+' €', {x:colX.imp, y, size:8.5, font, color:black});
+      y -= 13.5;
+    }
+    y -= 8;
+    page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:0.8, color:black });
+    y -= 18;
+    page.drawText('Totale', { x: marginX, y, size:12, font:bold, color:black });
+    page.drawText(`${fmtMoney(totale)} €`, { x: colX.imp-10, y, size:12, font:bold, color:black });
+
+    return pdfDoc;
+  }
+
+  async function exportScansioniPdf(btn){
+    if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
+    btn.disabled = true;
+    showToast('Genero il PDF…');
+    const pdfDoc = await buildScansioniPdf();
+    const bytes = await pdfDoc.save();
+    const blob = bytesToBlob(bytes);
+    btn.disabled = false;
+    replaceWithOpenLink(btn, blob, `riepilogo-corse-${dateKey(new Date())}.pdf`);
+  }
+
   function renderScansioni(container){
     const card = document.createElement('div'); card.className='card';
     card.innerHTML = `<h2>Scansione corse</h2>
@@ -1839,7 +1923,8 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const totale = list.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
     const sumCard = document.createElement('div'); sumCard.className='card';
     sumCard.innerHTML = `<div class="kv-row"><span class="k">Corse scansionate</span><span class="v">${list.length}</span></div>
-      <div class="kv-row"><span class="k">Totale importi</span><span class="v">${fmtMoney(totale)} €</span></div>`;
+      <div class="kv-row"><span class="k">Totale importi</span><span class="v">${fmtMoney(totale)} €</span></div>
+      <button class="save-btn" id="genScanPdfBtn" style="margin-top:10px;" ${list.length===0?'disabled':''}>📄 Genera PDF riepilogo</button>`;
     container.appendChild(sumCard);
 
     if(list.length===0){
@@ -1866,6 +1951,10 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
       if(file) runOcrOnFile(file);
       e.target.value = '';
     });
+    const genBtn = document.getElementById('genScanPdfBtn');
+    if(genBtn && !genBtn.disabled){
+      genBtn.addEventListener('click', ()=> exportScansioniPdf(genBtn));
+    }
   }
 
   document.getElementById('closeSheetScan').addEventListener('click', ()=> document.getElementById('overlayScan').classList.remove('show'));
@@ -2964,6 +3053,10 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     document.getElementById('setRiduzione').checked = state.settings.inpsRiduzione35;
     document.getElementById('setFranchigia').value = state.settings.franchigiaMediche;
     document.getElementById('setDetrMed').value = state.settings.detrMedichePerc;
+    document.getElementById('setScanNome').value = state.settings.scanAnagrafica.nome;
+    document.getElementById('setScanSigla').value = state.settings.scanAnagrafica.sigla;
+    document.getElementById('setScanSeriale').value = state.settings.scanAnagrafica.seriale;
+    document.getElementById('setScanIban').value = state.settings.scanAnagrafica.iban;
     overlaySet.classList.add('show');
   }
   document.getElementById('gearBtn').addEventListener('click', openSettingsSheet);
@@ -2986,6 +3079,12 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     state.settings.inpsRiduzione35 = document.getElementById('setRiduzione').checked;
     state.settings.franchigiaMediche = parseFloat(document.getElementById('setFranchigia').value) || 0;
     state.settings.detrMedichePerc = parseFloat(document.getElementById('setDetrMed').value) || 0;
+    state.settings.scanAnagrafica = {
+      nome: document.getElementById('setScanNome').value.trim(),
+      sigla: document.getElementById('setScanSigla').value.trim(),
+      seriale: document.getElementById('setScanSeriale').value.trim(),
+      iban: document.getElementById('setScanIban').value.trim()
+    };
     await saveState();
     overlaySet.classList.remove('show');
     showToast('Impostazioni salvate');
