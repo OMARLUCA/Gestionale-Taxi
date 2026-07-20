@@ -649,6 +649,45 @@
   const MESI_FULL = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
   const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
   const METODI = ['carta','contanti','app','globix','centrale','aggeggio','buoni','satispay'];
+  const METODI_ELETTRONICI = ['carta','globix','centrale','buoni','app'];
+
+  function aggregateDayEntries(entries){
+    const byTipo = { posteggio:0, radio:0, prenotazione:0 };
+    const byTipoCount = { posteggio:0, radio:0, prenotazione:0 };
+    const byMetodoEntrata = {}; METODI.forEach(m=>byMetodoEntrata[m]=0);
+    const byMetodoEntrataCount = {}; METODI.forEach(m=>byMetodoEntrataCount[m]=0);
+    for(const e of entries){
+      if(e.kind!=='entrata') continue;
+      if(byTipo.hasOwnProperty(e.tipo)){ byTipo[e.tipo]+=e.importo; byTipoCount[e.tipo]++; }
+      if(byMetodoEntrata.hasOwnProperty(e.metodo)){ byMetodoEntrata[e.metodo]+=e.importo; byMetodoEntrataCount[e.metodo]++; }
+    }
+    return { byTipo, byTipoCount, byMetodoEntrata, byMetodoEntrataCount };
+  }
+
+  // Card riutilizzabile "Corse per tipologia" + "Per metodo di pagamento", usata sia nel
+  // Riepilogo mensile sia nel riepilogo giornaliero della tab Corse.
+  function renderTipologiaMetodoBreakdown(container, agg, periodLabel){
+    const card2 = document.createElement('div'); card2.className='card'; card2.innerHTML = `<h2>Corse per tipologia · ${periodLabel}</h2>`;
+    const maxV = Math.max(1, agg.byTipo.posteggio, agg.byTipo.radio, agg.byTipo.prenotazione);
+    [['radio','Radio'],['posteggio','Posteggio'],['prenotazione','Prenotazione']].forEach(([k,label])=>{
+      const row = document.createElement('div'); row.className='breakdown-row';
+      const pct = Math.round((agg.byTipo[k]/maxV)*100);
+      row.innerHTML = `<div class="lbl">${label} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${agg.byTipoCount[k]})</span></div><div class="bar-track"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(agg.byTipo[k])} €</div>`;
+      card2.appendChild(row);
+    });
+    container.appendChild(card2);
+
+    const card3 = document.createElement('div'); card3.className='card'; card3.innerHTML = `<h2>Per metodo di pagamento · ${periodLabel}</h2>`;
+    const maxM = Math.max(1, ...METODI.map(mm=>agg.byMetodoEntrata[mm]));
+    METODI.forEach(mm=>{
+      const row = document.createElement('div'); row.className='breakdown-row';
+      const pct = Math.round((agg.byMetodoEntrata[mm]/maxM)*100);
+      const cls = mm==='carta'?'radio':(mm==='contanti'?'prenotazione':'posteggio');
+      row.innerHTML = `<div class="lbl">${METODO_LABEL[mm]} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${agg.byMetodoEntrataCount[mm]})</span></div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(agg.byMetodoEntrata[mm])} €</div>`;
+      card3.appendChild(row);
+    });
+    container.appendChild(card3);
+  }
   const METODO_LABEL = { carta:'Carta', contanti:'Contanti', app:'App', globix:'Globix', centrale:'Importo centrale', aggeggio:'Aggeggio', buoni:'Buoni', satispay:'Satispay' };
 
   function pad(n){ return String(n).padStart(2,'0'); }
@@ -1247,18 +1286,29 @@
         card.appendChild(swipe);
       });
     }
+    container.appendChild(card);
+
+    const dayAgg = aggregateDayEntries(entries);
+    renderTipologiaMetodoBreakdown(container, dayAgg, 'oggi');
+
     const corseEntries = entries.filter(e=>e.kind==='entrata');
-    const elettroniciCount = corseEntries.filter(e=>e.metodo!=='contanti').length;
-    const contantiCount = corseEntries.filter(e=>e.metodo==='contanti').length;
-    const rec1 = document.createElement('div'); rec1.className='corse-stats'; rec1.style.marginTop='12px';
+    const elettroniciEntries = corseEntries.filter(e=>METODI_ELETTRONICI.includes(e.metodo));
+    const contantiEntries = corseEntries.filter(e=>e.metodo==='contanti');
+    const elettroniciTot = elettroniciEntries.reduce((s,e)=>s+e.importo,0);
+    const contantiTot = contantiEntries.reduce((s,e)=>s+e.importo,0);
+    const sumCard = document.createElement('div'); sumCard.className='card'; sumCard.innerHTML = `<h2>Riepilogo giornata</h2>`;
+    const rec1 = document.createElement('div'); rec1.className='corse-stats'; rec1.style.marginTop='4px';
     rec1.innerHTML = `<div class="stat"><span class="k">Totale spese</span><span class="v">${fmtMoney(spese)} €</span></div>
       <div class="stat"><span class="k">Corse totali</span><span class="v">${corseEntries.length}</span></div>`;
-    card.appendChild(rec1);
+    sumCard.appendChild(rec1);
     const rec2 = document.createElement('div'); rec2.className='corse-stats';
-    rec2.innerHTML = `<div class="stat"><span class="k">Pag. elettronici</span><span class="v">${elettroniciCount}</span></div>
-      <div class="stat"><span class="k">Pag. contanti</span><span class="v">${contantiCount}</span></div>`;
-    card.appendChild(rec2);
-    container.appendChild(card);
+    rec2.innerHTML = `<div class="stat"><span class="k">Pag. elettronici (${elettroniciEntries.length})</span><span class="v">${fmtMoney(elettroniciTot)} €</span></div>
+      <div class="stat"><span class="k">Pag. contanti (${contantiEntries.length})</span><span class="v">${fmtMoney(contantiTot)} €</span></div>`;
+    sumCard.appendChild(rec2);
+    const note = document.createElement('div'); note.className='subnote'; note.style.marginTop='8px';
+    note.textContent = 'Elettronici = carta, globix, importo centrale, buoni, app. Aggeggio e Satispay non rientrano in questo totale.';
+    sumCard.appendChild(note);
+    container.appendChild(sumCard);
 
     let openRowContent = null;
     function closeOpenRow(){
@@ -1397,26 +1447,7 @@
     </div>`;
     container.appendChild(card1);
 
-    const card2 = document.createElement('div'); card2.className='card'; card2.innerHTML = `<h2>Corse per tipologia · mese</h2>`;
-    const maxV = Math.max(1, m.byTipo.posteggio, m.byTipo.radio, m.byTipo.prenotazione);
-    [['radio','Radio'],['posteggio','Posteggio'],['prenotazione','Prenotazione']].forEach(([k,label])=>{
-      const row = document.createElement('div'); row.className='breakdown-row';
-      const pct = Math.round((m.byTipo[k]/maxV)*100);
-      row.innerHTML = `<div class="lbl">${label} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${m.byTipoCount[k]})</span></div><div class="bar-track"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(m.byTipo[k])} €</div>`;
-      card2.appendChild(row);
-    });
-    container.appendChild(card2);
-
-    const card3 = document.createElement('div'); card3.className='card'; card3.innerHTML = `<h2>Per metodo di pagamento · mese</h2>`;
-    const maxM = Math.max(1, ...METODI.map(mm=>m.byMetodoEntrata[mm]));
-    METODI.forEach(mm=>{
-      const row = document.createElement('div'); row.className='breakdown-row';
-      const pct = Math.round((m.byMetodoEntrata[mm]/maxM)*100);
-      const cls = mm==='carta'?'radio':(mm==='contanti'?'prenotazione':'posteggio');
-      row.innerHTML = `<div class="lbl">${METODO_LABEL[mm]} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${m.byMetodoEntrataCount[mm]})</span></div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(m.byMetodoEntrata[mm])} €</div>`;
-      card3.appendChild(row);
-    });
-    container.appendChild(card3);
+    renderTipologiaMetodoBreakdown(container, m, 'mese');
 
     const catEntries = Object.entries(m.byCategoria).filter(([k,v])=>v>0).sort((a,b)=>b[1]-a[1]);
     if(catEntries.length>0){
@@ -1461,7 +1492,7 @@
     METODI.forEach(m=>{ if(s.tracciato[m]) minima += agg.byMetodoEntrata[m]; });
     const mrec = getMonthReadonly(mkey);
     const dichiarazione = (typeof mrec.dichiarazioneOverride==='number' && mrec.dichiarazioneOverride>=0) ? mrec.dichiarazioneOverride : minima;
-    const coefficiente = agg.carburanteCartaReale>0 ? (agg.entrate/agg.carburanteCartaReale) : null;
+    const coefficiente = agg.carburanteReale>0 ? (agg.entrate/agg.carburanteReale) : null;
     const carburanteDichiarato = coefficiente ? (dichiarazione/coefficiente) : 0;
     return {
       incassoReale: agg.entrate,
@@ -1861,11 +1892,11 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
 
     const c3 = document.createElement('div'); c3.className='card';
     c3.innerHTML = `<h2>Carburante</h2>
-      <div class="kv-row"><span class="k">Carburante reale (totale, tutti i metodi)</span><span class="v">${fmtMoney(d.carburanteReale)} €</span></div>
-      <div class="kv-row"><span class="k">− di cui pagato con carta (usato nel calcolo)</span><span class="v">${fmtMoney(d.carburanteCartaReale)} €</span></div>
+      <div class="kv-row"><span class="k">Carburante reale (totale, usato nel calcolo)</span><span class="v">${fmtMoney(d.carburanteReale)} €</span></div>
+      <div class="kv-row"><span class="k">− di cui pagato con carta</span><span class="v">${fmtMoney(d.carburanteCartaReale)} €</span></div>
       <div class="kv-row"><span class="k">Coefficiente incasso/carburante</span><span class="v">${d.coefficiente ? d.coefficiente.toFixed(2) : '—'}</span></div>
       <div class="kv-row"><span class="k">Carburante da dichiarare</span><span class="v">${fmtMoney(d.carburanteDichiarato)} €</span></div>
-      <div class="subnote">Nel calcolo conta solo il carburante pagato con carta, perché è quello scaricabile. Coefficiente = incasso reale ÷ carburante pagato con carta. Il carburante da dichiarare è la dichiarazione effettiva divisa per quel coefficiente.</div>`;
+      <div class="subnote">Coefficiente = incasso reale ÷ carburante totale (tutti i metodi). Il carburante da dichiarare è la dichiarazione effettiva divisa per quel coefficiente. Il dato "pagato con carta" è solo informativo, non entra nel calcolo.</div>`;
     container.appendChild(c3);
 
     const c4 = document.createElement('div'); c4.className='card';
