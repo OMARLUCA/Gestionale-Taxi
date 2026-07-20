@@ -378,6 +378,7 @@
   .deadline-status{ font-size:13px !important; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 
@@ -400,6 +401,7 @@
   <button data-tab="riepilogo">Riepilogo</button>
   <button data-tab="report">Report</button>
   <button data-tab="corrispettivi">Corrispettivi</button>
+  <button data-tab="scansioni">Scansioni</button>
 </div>
 
 <main id="mainArea"><div class="loading">Caricamento registro…</div></main>
@@ -617,6 +619,27 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayScan">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head"><h3>Controlla i dati</h3><button id="closeSheetScan">✕</button></div>
+    <div class="subnote" style="margin-bottom:14px;">Letti dalla foto: correggi quello che serve prima di salvare.</div>
+    <div class="form-row"><label>ID corsa</label><input type="text" id="scanIdInput"></div>
+    <div class="km-grid">
+      <div class="field"><label>Data</label><input type="date" id="scanDataInput"></div>
+      <div class="field"><label>Ora</label><input type="time" id="scanOraInput"></div>
+    </div>
+    <div class="form-row"><label>Da</label><input type="text" id="scanDaInput"></div>
+    <div class="form-row"><label>A</label><input type="text" id="scanAInput"></div>
+    <div class="km-grid">
+      <div class="field"><label>Prezzo (€)</label><input type="number" step="0.01" id="scanPrezzoInput"></div>
+      <div class="field"><label>Metodo</label><input type="text" id="scanMetodoInput"></div>
+    </div>
+    <button class="save-btn" id="saveScanBtn" style="margin-top:8px;">Salva corsa</button>
+    <button class="save-btn" id="deleteScanBtn" style="margin-top:8px; display:none; background:var(--red-soft); color:var(--red); border:1px solid var(--red-line);">Elimina questa corsa</button>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -742,7 +765,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -784,6 +807,7 @@
         state.years = parsed.years || {};
         state.deadlines = parsed.deadlines || [];
         state.reports = parsed.reports || [];
+        state.scansioni = parsed.scansioni || [];
         state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
         state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
         state.settings.registro = Object.assign({}, DEFAULT_SETTINGS.registro, (parsed.settings && parsed.settings.registro) || {});
@@ -1182,10 +1206,12 @@
   function isCarburante(e){ return e.kind==='spesa' && spesaCategoria(e)==='carburante'; }
 
   // ---------- Grafico ore più produttive ----------
+  const HOURLY_CHART_MIN_DATE = '2026-07-11';
   function computeHourlyProductivity(){
     const hourly = new Array(24).fill(0);
     const workingDays = new Set();
     for(const [key, day] of Object.entries(state.days)){
+      if(key < HOURLY_CHART_MIN_DATE) continue;
       let hasEntrata = false;
       for(const e of (day.entries||[])){
         if(e.kind==='entrata' && e.time){
@@ -1260,9 +1286,8 @@
     const entries = [...day.entries].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
     const entrate = entries.filter(e=>e.kind==='entrata').reduce((s,e)=>s+e.importo,0);
     const spese = entries.filter(e=>e.kind==='spesa').reduce((s,e)=>s+e.importo,0);
-    const net = entrate-spese;
     const dt = document.createElement('div'); dt.className='day-total';
-    dt.innerHTML = `<h2 style="margin:0;">${compact?'Corse di oggi':'Movimenti'}</h2><span class="num ${net>=0?'pos':'neg'}">${net>=0?'':'-'}${fmtMoney(Math.abs(net))} €</span>`;
+    dt.innerHTML = `<h2 style="margin:0;">${compact?'Corse di oggi':'Movimenti'}</h2><span class="num pos">${fmtMoney(entrate)} €</span>`;
     card.appendChild(dt);
     renderCorseStats(card, day, entrate);
     if(entries.length===0){
@@ -1740,6 +1765,139 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     replaceWithOpenLink(btn, blob, filename);
     showToast('Libro pronto, tocca il link per aprirlo');
   }
+
+  // ---------- Scansione corse (OCR gratuito lato client, con revisione manuale) ----------
+  function parseCorsaOcrText(text){
+    const out = { id:'', data:'', ora:'', da:'', a:'', prezzo:'', metodo:'' };
+    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+
+    const dt = text.match(/(\d{2}\/\d{2}\/\d{4})\D{0,5}(\d{2}:\d{2})/);
+    if(dt){
+      const [gg,mm,yyyy] = dt[1].split('/');
+      out.data = `${yyyy}-${mm}-${gg}`;
+      out.ora = dt[2];
+    }
+
+    const idMatch = text.match(/\b\d{6,9}\b/);
+    if(idMatch) out.id = idMatch[0];
+
+    const priceMatch = text.match(/€\s*([\d]{1,3}[.,]\d{2})/) || text.match(/\b(\d{1,3}[,.]\d{2})\b/);
+    if(priceMatch) out.prezzo = priceMatch[1].replace('.',',');
+
+    const payMatch = text.match(/Pagamento\s*[:\-]?\s*([A-Za-z0-9]+)/i);
+    if(payMatch) out.metodo = payMatch[1];
+
+    const addrRe = /(via|viale|corso|piazza|piazzale|largo|strada|vicolo)\s+[a-zà-ù' ]+,?\s*\d*/gi;
+    const addrs = [];
+    lines.forEach(l=>{
+      const m = l.match(addrRe);
+      if(m) addrs.push(...m);
+    });
+    if(addrs[0]) out.da = addrs[0].trim();
+    if(addrs[1]) out.a = addrs[1].trim();
+
+    return out;
+  }
+
+  let scanEditingId = null;
+  function openScanReviewSheet(parsed, existingId){
+    scanEditingId = existingId || null;
+    document.getElementById('scanIdInput').value = parsed.id||'';
+    document.getElementById('scanDataInput').value = parsed.data||dateKey(new Date());
+    document.getElementById('scanOraInput').value = parsed.ora||'';
+    document.getElementById('scanDaInput').value = parsed.da||'';
+    document.getElementById('scanAInput').value = parsed.a||'';
+    document.getElementById('scanPrezzoInput').value = parsed.prezzo ? parsed.prezzo.replace(',','.') : '';
+    document.getElementById('scanMetodoInput').value = parsed.metodo||'';
+    document.getElementById('deleteScanBtn').style.display = existingId ? 'block' : 'none';
+    document.getElementById('overlayScan').classList.add('show');
+  }
+
+  async function runOcrOnFile(file){
+    showToast('Lettura foto in corso… (può richiedere qualche secondo)');
+    try{
+      const { data } = await Tesseract.recognize(file, 'ita', {});
+      const parsed = parseCorsaOcrText(data.text || '');
+      openScanReviewSheet(parsed, null);
+      showToast('Controlla i dati letti prima di salvare');
+    }catch(e){
+      console.error(e);
+      showToast('Lettura non riuscita, inserisci i dati a mano');
+      openScanReviewSheet({}, null);
+    }
+  }
+
+  function renderScansioni(container){
+    const card = document.createElement('div'); card.className='card';
+    card.innerHTML = `<h2>Scansione corse</h2>
+      <div class="subnote" style="margin-bottom:12px;">Scatta o carica una foto del display: i dati letti restano sempre modificabili prima di salvare. Strumento separato dalla tab Corse.</div>
+      <input type="file" id="scanFileInput" accept="image/*" capture="environment" style="display:none">
+      <button class="save-btn" id="scanBtn">📷 Scansiona una corsa</button>`;
+    container.appendChild(card);
+
+    const list = state.scansioni||[];
+    const totale = list.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
+    const sumCard = document.createElement('div'); sumCard.className='card';
+    sumCard.innerHTML = `<div class="kv-row"><span class="k">Corse scansionate</span><span class="v">${list.length}</span></div>
+      <div class="kv-row"><span class="k">Totale importi</span><span class="v">${fmtMoney(totale)} €</span></div>`;
+    container.appendChild(sumCard);
+
+    if(list.length===0){
+      const es = document.createElement('div'); es.className='card';
+      es.innerHTML = `<div class="subnote">Nessuna corsa scansionata ancora.</div>`;
+      container.appendChild(es);
+    } else {
+      const listCard = document.createElement('div'); listCard.className='card';
+      listCard.innerHTML = `<h2>Corse scansionate</h2>`;
+      [...list].sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
+        const row = document.createElement('div'); row.className='kv-row'; row.style.cursor='pointer';
+        row.innerHTML = `<span class="k">${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}</span><span class="v">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+        row.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
+        listCard.appendChild(row);
+      });
+      container.appendChild(listCard);
+    }
+
+    document.getElementById('scanBtn').addEventListener('click', ()=>{
+      document.getElementById('scanFileInput').click();
+    });
+    document.getElementById('scanFileInput').addEventListener('change', (e)=>{
+      const file = e.target.files[0];
+      if(file) runOcrOnFile(file);
+      e.target.value = '';
+    });
+  }
+
+  document.getElementById('closeSheetScan').addEventListener('click', ()=> document.getElementById('overlayScan').classList.remove('show'));
+  document.getElementById('overlayScan').addEventListener('click', (e)=>{ if(e.target.id==='overlayScan') document.getElementById('overlayScan').classList.remove('show'); });
+  document.getElementById('saveScanBtn').addEventListener('click', async ()=>{
+    const entry = {
+      _id: scanEditingId || ('scan-'+Date.now()),
+      id: document.getElementById('scanIdInput').value.trim(),
+      data: document.getElementById('scanDataInput').value,
+      ora: document.getElementById('scanOraInput').value,
+      da: document.getElementById('scanDaInput').value.trim(),
+      a: document.getElementById('scanAInput').value.trim(),
+      prezzo: document.getElementById('scanPrezzoInput').value,
+      metodo: document.getElementById('scanMetodoInput').value.trim()
+    };
+    if(!entry.prezzo){ showToast('Inserisci almeno il prezzo'); return; }
+    const idx = state.scansioni.findIndex(s=>s._id===entry._id);
+    if(idx>=0) state.scansioni[idx] = entry; else state.scansioni.push(entry);
+    await saveState();
+    document.getElementById('overlayScan').classList.remove('show');
+    showToast('Corsa salvata');
+    renderMain();
+  });
+  document.getElementById('deleteScanBtn').addEventListener('click', async ()=>{
+    const ok = await askConfirm('Elimina corsa', 'Vuoi eliminare questa corsa scansionata?', 'Elimina');
+    if(!ok) return;
+    state.scansioni = state.scansioni.filter(s=>s._id!==scanEditingId);
+    await saveState();
+    document.getElementById('overlayScan').classList.remove('show');
+    showToast('Corsa eliminata');
+    renderMain();
+  });
 
   function renderCorrispettivi(container){
     const disc = document.createElement('div'); disc.className='disclaimer';
@@ -2443,7 +2601,7 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const day = getDayReadonly(dayKey);
     const isToday = isSameDay(viewDate, new Date());
 
-    document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi') ? 'none' : 'flex';
+    document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi'||activeTab==='scansioni') ? 'none' : 'flex';
 
     if(activeTab==='oggi'){ renderScadenzeAlert(main); renderShiftCapsule(main, dayKey, day, isToday); renderKmCard(main, dayKey, day); renderDeleteDayCard(main, dayKey); }
     else if(activeTab==='corse'){ renderHourlyProductivityCard(main); renderEntriesCard(main, dayKey, day, false); }
@@ -2452,6 +2610,7 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     else if(activeTab==='riepilogo'){ renderRiepilogo(main); }
     else if(activeTab==='report'){ renderReportTab(main); }
     else if(activeTab==='corrispettivi'){ renderCorrispettivi(main); }
+    else if(activeTab==='scansioni'){ renderScansioni(main); }
   }
 
   // ---------- Entry sheet ----------
