@@ -54,7 +54,7 @@
   .display{font-family:'Oswald', sans-serif;}
 
   header.top{
-    padding:calc(16px + var(--safe-top)) 18px 12px;
+    padding:calc(10px + var(--safe-top)) 18px 12px;
     background:var(--bg);
     border-bottom:1px solid var(--border);
     position:sticky; top:0; z-index:20;
@@ -81,6 +81,7 @@
     display:flex; align-items:center; justify-content:center; cursor:pointer;
   }
   .datenav button:active{background:var(--surface-3);}
+  #calBtn{background:var(--amber-soft); border-color:var(--amber-line); color:var(--amber-ink); width:42px; height:42px;}
   .datenav .label{
     flex:1; text-align:center; font-size:14px; font-weight:500;
     color:var(--ink); cursor:pointer; user-select:none;
@@ -113,6 +114,7 @@
     padding:10px; cursor:pointer;
     transition:background .25s, border-color .25s;
   }
+  .shift-capsule.expanded{border-radius:16px 16px 0 0; border-bottom-color:transparent;}
   .shift-capsule .lamp{
     width:46px; height:46px; border-radius:50%; flex-shrink:0;
     background:var(--surface-3); border:1px solid var(--border);
@@ -161,29 +163,71 @@
   .shift-capsule.on .status{color:var(--green);}
   .shift-capsule .timer{font-family:'JetBrains Mono', monospace; font-size:20px; font-weight:500; color:var(--ink); margin-top:1px;}
   .shift-capsule .hint{font-size:11px; color:var(--ink-faint); margin-top:1px;}
-  .shift-capsule .chev{color:var(--ink-faint); font-size:13px; padding-right:10px;}
+  .shift-capsule .chev{
+    background:var(--surface); border:1px solid var(--border); color:var(--ink-muted);
+    font-size:15px; width:34px; height:34px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .2s;
+  }
+  .shift-capsule .chev.open{transform:rotate(180deg);}
+
+  .shift-panel{background:var(--surface-2); border:1px solid var(--border); border-top:none; border-radius:0 0 16px 16px; margin-top:-8px; padding:16px; position:relative;}
+  .shift-panel .panel-subhead{font-size:11px; text-transform:uppercase; letter-spacing:0.05em; color:var(--ink-faint); font-weight:700; margin:16px 0 8px;}
+  .shift-panel .km-delta{background:var(--amber-soft); border-radius:10px; padding:10px 12px; margin-top:8px; text-align:center;}
+  .shift-panel .km-delta .num{font-family:'JetBrains Mono', monospace; font-weight:800; font-size:17px; color:var(--amber-ink);}
+  .shift-panel .km-delta .lbl{font-size:11px; color:var(--ink-muted);}
 
   .halfhour-strip{display:flex; flex-wrap:wrap; gap:3px; margin-top:12px;}
+  .cal-nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;}
+  .cal-nav button{width:34px; height:34px; border-radius:10px; border:1px solid var(--border); background:var(--surface-2); color:var(--ink-muted); font-size:16px;}
+  .cal-legend{display:flex; gap:12px; font-size:11.5px; color:var(--ink-muted);}
+  .cal-legend span{display:flex; align-items:center; gap:5px;}
+  .dot-legend{width:8px; height:8px; border-radius:50%; display:inline-block;}
+  .dot-legend.green{background:var(--green);}
+  .dot-legend.red{background:var(--red);}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px; text-align:center;}
+  .cal-grid .wd{font-size:10.5px; color:var(--ink-faint); font-weight:700; padding-bottom:8px;}
+  .cal-day{position:relative; padding:10px 0 13px; border-radius:11px; font-size:14.5px; font-weight:600; color:var(--ink); cursor:pointer; background:var(--surface-2);}
+  .cal-day.empty{background:none; cursor:default;}
+  .cal-day.today{background:var(--amber-soft); color:var(--amber-ink); font-weight:800; border:1px solid var(--amber-line);}
+  .cal-day.selected{outline:2px solid var(--amber);}
+  .cal-day .dots{position:absolute; bottom:5px; left:50%; transform:translateX(-50%); display:flex; gap:4px;}
+  .cal-day .dots span{width:8px; height:8px; border-radius:50%; box-shadow:0 0 0 0.5px rgba(0,0,0,0.15);}
   .halfhour-strip .blk{width:14px; height:20px; border-radius:3px; background:var(--surface-3); border:1px solid var(--border);}
   .halfhour-strip .blk.filled{background:var(--amber); border-color:var(--amber);}
   .strip-label{display:flex; justify-content:space-between; align-items:baseline; margin-top:14px;}
   .strip-label .k{color:var(--ink-muted); font-size:12px;}
   .strip-label .v{font-family:'JetBrains Mono', monospace; font-size:15px; color:var(--ink);}
 
-  .tabs{
-    display:flex; gap:6px; padding:0 18px 14px; overflow-x:auto;
-    position:sticky; top:calc(94px + var(--safe-top)); z-index:19; background:var(--bg);
-    scrollbar-width:none;
+  .bottom-tabs{
+    display:flex; position:fixed; left:0; right:0; bottom:0; z-index:25;
+    background:var(--surface-2); border-top:1px solid var(--border);
+    padding:6px 4px calc(6px + var(--safe-bottom));
   }
-  .tabs::-webkit-scrollbar{display:none;}
   .tabs button{
-    flex:0 0 auto; background:var(--surface); border:1px solid var(--border); color:var(--ink-muted);
-    font-family:'Oswald', sans-serif; font-size:12px; letter-spacing:0.05em; text-transform:uppercase;
-    padding:10px 14px; border-radius:10px; cursor:pointer; font-weight:500; white-space:nowrap;
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+    background:none; border:none; color:var(--ink-faint);
+    font-family:'Inter', sans-serif; font-size:10px; letter-spacing:0.01em;
+    padding:7px 2px 5px; cursor:pointer; font-weight:700; white-space:nowrap; min-width:0;
   }
-  .tabs button.active{background:var(--amber); border-color:var(--amber); color:#241A02; font-weight:700; box-shadow:0 2px 8px rgba(217,154,21,0.4);}
+  .tabs button svg{width:21px; height:21px; stroke:currentColor; fill:none; stroke-width:1.8;}
+  .tabs button.active{color:var(--amber-ink);}
+  .tabs button.active svg{stroke:var(--amber);}
+  .altro-popover{
+    position:fixed; right:10px; bottom:calc(64px + var(--safe-bottom)); z-index:26;
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    box-shadow:0 6px 24px rgba(0,0,0,0.16); padding:6px; display:none; flex-direction:column; min-width:170px;
+  }
+  .altro-popover.show{display:flex;}
+  .altro-popover button{
+    display:flex; align-items:center; gap:10px; background:none; border:none; text-align:left;
+    padding:10px 12px; border-radius:9px; font-family:'Inter', sans-serif; font-size:14px; font-weight:600; color:var(--ink); cursor:pointer;
+  }
+  .altro-popover button:active{background:var(--surface-2);}
+  .altro-popover button svg{width:18px; height:18px; stroke:var(--ink-muted); fill:none; stroke-width:1.8; flex-shrink:0;}
+  .altro-popover button.active{color:var(--amber-ink);}
+  .altro-popover button.active svg{stroke:var(--amber);}
 
-  main{padding:0 18px 24px;}
+  main{padding:0 18px 90px;}
   .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px;}
   .card h2{font-family:'Oswald', sans-serif; font-size:13px; letter-spacing:0.08em; text-transform:uppercase; color:var(--ink-muted); margin:0 0 12px; font-weight:500;}
   .card .subnote{font-size:11.5px; color:var(--ink-faint); margin-top:6px; line-height:1.5;}
@@ -222,7 +266,7 @@
   .entry-amt.neg{color:var(--red);}
   .empty-state{text-align:center; padding:28px 10px; color:var(--ink-faint); font-size:13px;}
 
-  .fab{position:fixed; right:20px; bottom:calc(20px + var(--safe-bottom)); width:56px; height:56px; border-radius:50%; background:var(--amber); color:#241A02; border:none; font-size:26px; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(217,154,21,0.35); cursor:pointer; z-index:25;}
+  .fab{position:fixed; right:20px; bottom:calc(74px + var(--safe-bottom)); width:56px; height:56px; border-radius:50%; background:var(--amber); color:#241A02; border:none; font-size:26px; display:flex; align-items:center; justify-content:center; box-shadow:0 6px 18px rgba(217,154,21,0.35); cursor:pointer; z-index:25;}
   .fab:active{transform:scale(0.94);}
 
   .month-nav{display:flex; align-items:center; gap:10px; margin-bottom:14px;}
@@ -301,6 +345,9 @@
   .overlay.show{opacity:1; pointer-events:auto;}
   .sheet{background:var(--surface); width:100%; border-radius:20px 20px 0 0; padding:18px 18px calc(20px + var(--safe-bottom)); border-top:1px solid var(--border); transform:translateY(100%); transition:transform .25s ease; max-height:88vh; overflow-y:auto;}
   .sheet-handle{width:40px; height:5px; border-radius:3px; background:var(--border); margin:-6px auto 14px; touch-action:none;}
+  #entrySheet{display:flex; flex-direction:column; max-height:88vh; overflow:hidden;}
+  #entrySheet .sheet-scroll{overflow-y:auto; flex:1; min-height:0;}
+  #entrySheet #saveEntry{flex-shrink:0; margin-top:12px;}
   .overlay.show .sheet{transform:translateY(0);}
   .sheet-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;}
   .sheet-head h3{font-family:'Oswald', sans-serif; font-size:16px; margin:0; text-transform:uppercase; letter-spacing:0.04em;}
@@ -323,6 +370,9 @@
   .form-row input:focus, .form-row select:focus{outline:none; border-color:var(--amber-line);}
 
   .save-btn{width:100%; background:var(--amber); color:#241A02; border:none; font-family:'Oswald', sans-serif; font-size:14px; letter-spacing:0.05em; text-transform:uppercase; font-weight:600; padding:14px 0; border-radius:11px; cursor:pointer; margin-top:6px;}
+  .save-btn.secondary{background:var(--surface); border:1px solid var(--border); color:var(--ink);}
+  .quick-add-row{display:flex; gap:10px; margin-bottom:14px;}
+  .quick-add-row .save-btn{margin-top:0;}
   .save-btn:disabled{opacity:0.4;}
 
   .settings-section{margin-bottom:20px;}
@@ -367,7 +417,7 @@
   .datenav .label{ font-size:19px !important; font-weight:700 !important; }
   h1{ font-size:28px !important; }
   .eyebrow{ font-size:13px !important; }
-  .tabs button{ font-size:16px !important; font-weight:700 !important; }
+  .tabs button{ font-size:10.5px !important; font-weight:700 !important; }
   .save-btn{ font-size:18px !important; }
   .day-total .num{ font-size:26px !important; }
   .shift-capsule .status{ font-size:17px !important; }
@@ -383,28 +433,55 @@
 <body>
 
 <header class="top">
-  <div class="eyebrow">Registro di bordo</div>
   <div class="title-row"><h1>Gestionale Taxi</h1><div style="display:flex; gap:8px; align-items:center;"><select class="year-select" id="globalYearSelect"></select><button class="gear-btn" id="gearBtn">⚙</button></div></div>
   <div class="datenav">
     <button id="prevDay">‹</button>
     <div class="label" id="dateLabel">—</div>
     <button id="nextDay">›</button>
+    <button id="calBtn" aria-label="Calendario"><svg viewBox="0 0 24 24" width="27" height="27" stroke="currentColor" fill="none" stroke-width="1.8"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></button>
     <div class="today-pill" id="todayPill">oggi</div>
   </div>
 </header>
 
-<div class="tabs">
-  <button class="active" data-tab="oggi">Oggi</button>
-  <button data-tab="corse">Corse</button>
-  <button data-tab="tasse">Tasse</button>
-  <button data-tab="scadenze">Scadenze</button>
-  <button data-tab="riepilogo">Riepilogo</button>
-  <button data-tab="report">Report</button>
-  <button data-tab="corrispettivi">Corrispettivi</button>
-  <button data-tab="scansioni">Scansioni</button>
+<div class="altro-popover" id="altroPopover">
+  <button data-tab="report">
+    <svg viewBox="0 0 24 24"><path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg>
+    Report
+  </button>
+  <button data-tab="tasse">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9 10h4a2 2 0 1 1 0 4H9M9 8v10"/></svg>
+    Tasse
+  </button>
+  <button data-tab="scadenze">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>
+    Scadenze
+  </button>
 </div>
 
 <main id="mainArea"><div class="loading">Caricamento registro…</div></main>
+
+<nav class="tabs bottom-tabs">
+  <button class="active" data-tab="oggi">
+    <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+    Oggi
+  </button>
+  <button data-tab="scansioni">
+    <svg viewBox="0 0 24 24"><path d="M4 8l2-3h12l2 3"/><rect x="3" y="8" width="18" height="12" rx="2"/><circle cx="12" cy="14" r="3"/></svg>
+    Scansioni
+  </button>
+  <button data-tab="riepilogo">
+    <svg viewBox="0 0 24 24"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>
+    Riepilogo
+  </button>
+  <button data-tab="corrispettivi">
+    <svg viewBox="0 0 24 24"><path d="M6 2h12v19l-3-2-3 2-3-2-3 2V2z"/><path d="M9 7h6M9 11h6"/></svg>
+    Corrispettivi
+  </button>
+  <button id="altroToggle" type="button">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.8"/><circle cx="5" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+    Altro
+  </button>
+</nav>
 
 <button class="fab" id="fabAdd">+</button>
 
@@ -413,6 +490,7 @@
   <div class="sheet" id="entrySheet">
     <div class="sheet-handle" id="entrySheetHandle"></div>
     <div class="sheet-head"><h3>Aggiungi voce</h3><button id="closeSheet">✕</button></div>
+    <div class="sheet-scroll">
     <div class="amount-input"><input type="text" inputmode="numeric" pattern="[0-9]*" id="amtInput" placeholder="0,00"><span class="cur">€</span></div>
     <div class="chip-row" id="kindChips">
       <div class="chip active" data-kind="entrata">Entrata</div>
@@ -451,6 +529,7 @@
     </div>
     <div class="form-row"><label>Ora</label><input type="time" id="timeInput"></div>
     <div class="form-row"><label>Nota (opzionale)</label><input type="text" id="noteInput" placeholder="es. cliente aeroporto..."></div>
+    </div>
     <button class="save-btn" id="saveEntry">Salva</button>
   </div>
 </div>
@@ -645,6 +724,22 @@
     </div>
     <button class="save-btn" id="saveScanBtn" style="margin-top:8px;">Salva corsa</button>
     <button class="save-btn" id="deleteScanBtn" style="margin-top:8px; display:none; background:var(--red-soft); color:var(--red); border:1px solid var(--red-line);">Elimina questa corsa</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlayCal">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head">
+      <h3 id="calSheetTitle">—</h3>
+      <button id="closeSheetCal">✕</button>
+    </div>
+    <div class="cal-nav">
+      <button id="calPrevMonth">‹</button>
+      <div class="cal-legend"><span><i class="dot-legend green"></i> entrate</span><span><i class="dot-legend red"></i> spese</span></div>
+      <button id="calNextMonth">›</button>
+    </div>
+    <div class="cal-grid" id="calGrid"></div>
   </div>
 </div>
 
@@ -886,47 +981,105 @@
   document.getElementById('nextDay').addEventListener('click', ()=>{ viewDate.setDate(viewDate.getDate()+1); renderMain(); });
   document.getElementById('todayPill').addEventListener('click', ()=>{ viewDate = new Date(); viewDate.setHours(0,0,0,0); renderMain(); });
 
-  document.querySelectorAll('.tabs button').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      activeTab = btn.dataset.tab;
-      renderMain();
+  // ---------- Calendario con pallini entrate/spese ----------
+  let calMonthDate = new Date();
+  function dayActivity(dayKey){
+    const day = state.days[dayKey];
+    if(!day || !day.entries || !day.entries.length) return { hasIn:false, hasOut:false };
+    let hasIn=false, hasOut=false;
+    for(const e of day.entries){ if(e.kind==='entrata') hasIn=true; else hasOut=true; }
+    return { hasIn, hasOut };
+  }
+  function renderCalGrid(){
+    const y = calMonthDate.getFullYear(), m = calMonthDate.getMonth();
+    document.getElementById('calSheetTitle').textContent = `${MESI_FULL[m]} ${y}`;
+    const grid = document.getElementById('calGrid');
+    const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // lunedì=0
+    const daysInMonth = new Date(y, m+1, 0).getDate();
+    const todayKey = dateKey(new Date());
+    let html = ['L','M','M','G','V','S','D'].map(w=>`<div class="wd">${w}</div>`).join('');
+    for(let i=0;i<firstDow;i++) html += `<div class="cal-day empty"></div>`;
+    for(let d=1; d<=daysInMonth; d++){
+      const dk = `${y}-${pad(m+1)}-${pad(d)}`;
+      const act = dayActivity(dk);
+      const isToday = dk===todayKey;
+      const dots = (act.hasIn||act.hasOut) ? `<div class="dots">${act.hasIn?'<span style="background:var(--green);"></span>':''}${act.hasOut?'<span style="background:var(--red);"></span>':''}</div>` : '';
+      html += `<div class="cal-day${isToday?' today':''}" data-day="${d}">${d}${dots}</div>`;
+    }
+    grid.innerHTML = html;
+    grid.querySelectorAll('.cal-day[data-day]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        viewDate = new Date(y, m, parseInt(el.dataset.day,10));
+        document.getElementById('overlayCal').classList.remove('show');
+        renderMain();
+      });
     });
+  }
+  document.getElementById('calBtn').addEventListener('click', ()=>{
+    calMonthDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    renderCalGrid();
+    document.getElementById('overlayCal').classList.add('show');
   });
+  document.getElementById('closeSheetCal').addEventListener('click', ()=> document.getElementById('overlayCal').classList.remove('show'));
+  document.getElementById('overlayCal').addEventListener('click', (e)=>{ if(e.target.id==='overlayCal') document.getElementById('overlayCal').classList.remove('show'); });
+  document.getElementById('calPrevMonth').addEventListener('click', ()=>{ calMonthDate.setMonth(calMonthDate.getMonth()-1); renderCalGrid(); });
+  document.getElementById('calNextMonth').addEventListener('click', ()=>{ calMonthDate.setMonth(calMonthDate.getMonth()+1); renderCalGrid(); });
+
+  const ALTRO_TABS = ['report','tasse','scadenze'];
+  function setActiveTabUI(tab){
+    document.querySelectorAll('.bottom-tabs > button[data-tab]').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
+    document.querySelectorAll('.altro-popover button[data-tab]').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
+    document.getElementById('altroToggle').classList.toggle('active', ALTRO_TABS.includes(tab));
+  }
+  function goToTab(tab){
+    activeTab = tab;
+    setActiveTabUI(tab);
+    document.getElementById('altroPopover').classList.remove('show');
+    renderMain();
+  }
+  document.querySelectorAll('.bottom-tabs > button[data-tab], .altro-popover button[data-tab]').forEach(btn=>{
+    btn.addEventListener('click', ()=> goToTab(btn.dataset.tab));
+  });
+  document.getElementById('altroToggle').addEventListener('click', (e)=>{
+    e.stopPropagation();
+    document.getElementById('altroPopover').classList.toggle('show');
+  });
+  document.getElementById('altroPopover').addEventListener('click', (e)=> e.stopPropagation());
+  document.addEventListener('click', ()=> document.getElementById('altroPopover').classList.remove('show'));
 
   // ---------- Shift capsule ----------
+  let shiftDetailsExpanded = false;
   function renderShiftCapsule(container, dayKey, day, isToday){
     const wrap = document.createElement('div'); wrap.className = 'shift-wrap';
     const cap = document.createElement('div');
     const isPaused = !!(day.shiftStart && !day.shiftEnd && day.pauseStart);
     const isRunning = !!(day.shiftStart && !day.shiftEnd && !day.pauseStart);
-    cap.className = 'shift-capsule ' + (isPaused ? 'paused' : (isRunning ? 'on' : 'off'));
+    cap.className = 'shift-capsule ' + (isPaused ? 'paused' : (isRunning ? 'on' : 'off')) + (shiftDetailsExpanded ? ' expanded' : '');
     const lamp = document.createElement('div'); lamp.className = 'lamp'; lamp.innerHTML = '<div class="dot"></div>';
     const info = document.createElement('div'); info.className = 'info';
+
+    const kmBit = (typeof day.kmStart==='number' && typeof day.kmEnd==='number' && day.kmEnd>=day.kmStart) ? ` · ${(day.kmEnd-day.kmStart).toLocaleString('it-IT')} km` : '';
 
     if(!isToday){
       if(day.shiftStart && day.shiftEnd){
         const mins = workedMinutes(day);
-        info.innerHTML = `<div class="status">Turno registrato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">${day.pausedMinutes?'pausa totale '+fmtDuration(day.pausedMinutes):'ore lavorate'}</div>`;
+        info.innerHTML = `<div class="status">Turno registrato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">${day.pausedMinutes?'pausa totale '+fmtDuration(day.pausedMinutes):'ore lavorate'}${kmBit}</div>`;
       } else {
-        info.innerHTML = `<div class="status">Nessun turno</div><div class="hint">Puoi impostare gli orari a mano qui sotto</div>`;
+        info.innerHTML = `<div class="status">Nessun turno</div><div class="hint">Tocca la freccia per impostare orari e km a mano</div>`;
       }
       cap.style.cursor = 'default';
     } else if(!day.shiftStart){
       info.innerHTML = `<div class="status">Turno non iniziato</div><div class="hint">Tocca per iniziare</div>`;
     } else if(isPaused){
-      info.innerHTML = `<div class="status">In pausa</div><div class="timer" id="pauseTimer">00:00:00</div><div class="hint">Tocca per riprendere</div>`;
+      info.innerHTML = `<div class="status">In pausa</div><div class="timer" id="pauseTimer">00:00:00</div><div class="hint">Tocca per riprendere${kmBit}</div>`;
     } else if(isRunning){
-      info.innerHTML = `<div class="status">In servizio</div><div class="timer" id="liveTimer">00:00:00</div><div class="hint">Tocca per mettere in pausa</div>`;
+      info.innerHTML = `<div class="status">In servizio</div><div class="timer" id="liveTimer">00:00:00</div><div class="hint">Tocca per mettere in pausa${kmBit}</div>`;
     } else {
       const mins = workedMinutes(day);
-      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Tocca per iniziare un nuovo turno${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}</div>`;
+      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Tocca per iniziare un nuovo turno${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
     }
     cap.appendChild(lamp); cap.appendChild(info);
     if(isToday){
-      const chev = document.createElement('div'); chev.className='chev'; chev.textContent='⌁';
-      cap.appendChild(chev);
       if(!day.shiftStart || (day.shiftStart && day.shiftEnd)){
         cap.addEventListener('click', ()=> startShift(dayKey));
       } else if(isRunning){
@@ -935,34 +1088,67 @@
         cap.addEventListener('click', ()=> resumeShift(dayKey));
       }
     }
+    const chev = document.createElement('button'); chev.className='chev'+(shiftDetailsExpanded?' open':''); chev.textContent='⌄'; chev.setAttribute('aria-label','Orari e km');
+    chev.addEventListener('click', (e)=>{ e.stopPropagation(); shiftDetailsExpanded = !shiftDetailsExpanded; renderMain(); });
+    cap.appendChild(chev);
     wrap.appendChild(cap);
 
-    const tf = document.createElement('div'); tf.className='km-grid'; tf.style.marginTop='12px';
+    if(!shiftDetailsExpanded){ container.appendChild(wrap); return; }
+
+    const panel = document.createElement('div'); panel.className='shift-panel';
+
+    const tf = document.createElement('div'); tf.className='km-grid';
     const inizioVal = day.shiftStart ? new Date(day.shiftStart).toTimeString().slice(0,5) : '';
     const fineVal = day.shiftEnd ? new Date(day.shiftEnd).toTimeString().slice(0,5) : '';
     tf.innerHTML = `<div class="field"><label>Inizio turno</label><input type="time" id="shiftStartInput" value="${inizioVal}"></div>
       <div class="field"><label>Fine turno</label><input type="time" id="shiftEndInput" value="${fineVal}"></div>`;
     tf.querySelector('#shiftStartInput').addEventListener('change', (e)=> setShiftStartManual(dayKey, e.target.value));
     tf.querySelector('#shiftEndInput').addEventListener('change', (e)=> setShiftEndManual(dayKey, e.target.value));
-    wrap.appendChild(tf);
+    panel.appendChild(tf);
     const tfNote = document.createElement('div'); tfNote.className='subnote';
     tfNote.textContent = 'Se ti dimentichi di avviare o fermare il contatore, imposta qui l\'orario a mano.';
-    wrap.appendChild(tfNote);
+    panel.appendChild(tfNote);
     if(isPaused){
       const pf = document.createElement('div'); pf.className='pause-note'; pf.style.color='var(--yellow)';
       pf.textContent = `In pausa dalle ${new Date(day.pauseStart).toTimeString().slice(0,5)}`;
-      wrap.appendChild(pf);
+      panel.appendChild(pf);
     }
 
     if(day.shiftStart && !isPaused){
       const pauseRow = document.createElement('div'); pauseRow.className='field'; pauseRow.style.marginTop='12px';
       pauseRow.innerHTML = `<label>Minuti di pausa nel turno</label><input type="number" inputmode="numeric" id="pauseMinsInput" value="${day.pausedMinutes||0}">`;
-      wrap.appendChild(pauseRow);
+      panel.appendChild(pauseRow);
       pauseRow.querySelector('#pauseMinsInput').addEventListener('change', (e)=> setPauseMinutesManual(dayKey, e.target.value));
       const pauseNote = document.createElement('div'); pauseNote.className='subnote';
       pauseNote.textContent = 'Correggi qui i minuti di pausa se hai dimenticato di riprendere il turno.';
-      wrap.appendChild(pauseNote);
+      panel.appendChild(pauseNote);
     }
+
+    const kmh = document.createElement('h4'); kmh.className='panel-subhead'; kmh.textContent='Chilometri'; panel.appendChild(kmh);
+    const kg = document.createElement('div'); kg.className='km-grid';
+    kg.innerHTML = `<div class="field"><label>Km inizio</label><input type="number" inputmode="numeric" id="kmStart" value="${day.kmStart ?? ''}"></div>
+      <div class="field"><label>Km fine</label><input type="number" inputmode="numeric" id="kmFine" value="${day.kmEnd ?? ''}"></div>`;
+    panel.appendChild(kg);
+    const delta = document.createElement('div'); delta.className='km-delta';
+    function renderDelta(){
+      const s = parseFloat(kg.querySelector('#kmStart').value);
+      const e = parseFloat(kg.querySelector('#kmFine').value);
+      if(!isNaN(s) && !isNaN(e) && e>=s) delta.innerHTML = `<div class="num">${(e-s).toLocaleString('it-IT')} km</div><div class="lbl">percorsi in giornata</div>`;
+      else delta.innerHTML = `<div class="num" style="color:var(--ink-faint)">—</div><div class="lbl">inserisci km inizio e fine</div>`;
+    }
+    panel.appendChild(delta); renderDelta();
+    let kmSaveTO=null;
+    function scheduleKmSave(){
+      clearTimeout(kmSaveTO);
+      kmSaveTO = setTimeout(async ()=>{
+        const s = kg.querySelector('#kmStart').value, e = kg.querySelector('#kmFine').value;
+        const d = ensureDay(dayKey);
+        d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+        await saveState();
+      }, 500);
+    }
+    kg.querySelector('#kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
+    kg.querySelector('#kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
 
     if(isToday && (isRunning || isPaused)){
       const actions = document.createElement('div'); actions.className='shift-actions';
@@ -978,7 +1164,7 @@
       const b2 = document.createElement('button'); b2.className='btn-end'; b2.textContent='Termina turno';
       b2.addEventListener('click', ()=> endShift(dayKey));
       actions.appendChild(b2);
-      wrap.appendChild(actions);
+      panel.appendChild(actions);
     }
 
     let mins = workedMinutes(day);
@@ -986,16 +1172,17 @@
       const blocks = Math.max(1, Math.round(mins/30));
       const strip = document.createElement('div'); strip.className='halfhour-strip';
       for(let i=0;i<Math.min(blocks,32);i++){ const b=document.createElement('div'); b.className='blk filled'; strip.appendChild(b); }
-      wrap.appendChild(strip);
+      panel.appendChild(strip);
       const sl = document.createElement('div'); sl.className='strip-label';
       sl.innerHTML = `<span class="k">Ore lavorate (blocchi da 30 min)</span><span class="v">${fmtDuration(mins)}</span>`;
-      wrap.appendChild(sl);
+      panel.appendChild(sl);
     }
     if((day.pausedMinutes||0) > 0 && !isPaused){
       const pn = document.createElement('div'); pn.className='pause-note';
       pn.textContent = `Pausa totale in questo turno: ${fmtDuration(day.pausedMinutes)}`;
-      wrap.appendChild(pn);
+      panel.appendChild(pn);
     }
+    wrap.appendChild(panel);
     container.appendChild(wrap);
     if(isToday && isRunning) startLiveTimer(day.shiftStart);
     else if(isToday && isPaused) startPauseTimer(day.pauseStart);
@@ -1312,6 +1499,15 @@
     note.textContent = `Fascia più redditizia: intorno alle ${pad(peakHour)}:00, in media ${fmtMoney(avg[peakHour])} € (su ${days} giorni con corse registrate).`;
     card.appendChild(note);
     container.appendChild(card);
+  }
+
+  function renderQuickAddRow(container, dayKey){
+    const row = document.createElement('div'); row.className='quick-add-row';
+    row.innerHTML = `<button class="save-btn" id="quickAddCorsa">＋ Aggiungi corsa</button>
+      <button class="save-btn secondary" id="quickAddSpesa">＋ Spesa</button>`;
+    container.appendChild(row);
+    row.querySelector('#quickAddCorsa').addEventListener('click', ()=> openEntrySheet(null, 'entrata'));
+    row.querySelector('#quickAddSpesa').addEventListener('click', ()=> openEntrySheet(null, 'spesa'));
   }
 
   function renderEntriesCard(container, dayKey, day, compact){
@@ -2747,10 +2943,16 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const day = getDayReadonly(dayKey);
     const isToday = isSameDay(viewDate, new Date());
 
-    document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi'||activeTab==='scansioni') ? 'none' : 'flex';
+    document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi'||activeTab==='scansioni'||activeTab==='oggi') ? 'none' : 'flex';
 
-    if(activeTab==='oggi'){ renderScadenzeAlert(main); renderShiftCapsule(main, dayKey, day, isToday); renderKmCard(main, dayKey, day); renderDeleteDayCard(main, dayKey); }
-    else if(activeTab==='corse'){ renderHourlyProductivityCard(main); renderEntriesCard(main, dayKey, day, false); }
+    if(activeTab==='oggi'){
+      renderScadenzeAlert(main);
+      renderShiftCapsule(main, dayKey, day, isToday);
+      renderQuickAddRow(main, dayKey);
+      renderEntriesCard(main, dayKey, day, false);
+      renderHourlyProductivityCard(main);
+      renderDeleteDayCard(main, dayKey);
+    }
     else if(activeTab==='tasse'){ renderTasse(main); }
     else if(activeTab==='scadenze'){ renderScadenze(main); }
     else if(activeTab==='riepilogo'){ renderRiepilogo(main); }
@@ -2764,7 +2966,7 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
   let formKind='entrata', formTipo='radio', formMetodo='carta', formAltroCat='carburante';
   let editingEntryId = null;
 
-  function openEntrySheet(existingEntry){
+  function openEntrySheet(existingEntry, defaultKind){
     editingEntryId = existingEntry ? existingEntry.id : null;
     document.querySelector('#overlay .sheet-head h3').textContent = editingEntryId ? 'Modifica voce' : 'Aggiungi voce';
     document.getElementById('saveEntry').textContent = editingEntryId ? 'Salva modifiche' : 'Salva';
@@ -2778,7 +2980,7 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
       document.getElementById('noteInput').value = existingEntry.nota || '';
       document.getElementById('timeInput').value = existingEntry.time || nowTimeStr();
     } else {
-      formKind='entrata'; formTipo='radio'; formMetodo='carta'; formAltroCat='carburante';
+      formKind = defaultKind || 'entrata'; formTipo = 'radio'; formMetodo = formKind==='spesa' ? 'contanti' : 'carta'; formAltroCat = 'carburante';
       document.getElementById('amtInput').value='';
       document.getElementById('noteInput').value='';
       document.getElementById('timeInput').value = isSameDay(viewDate,new Date()) ? nowTimeStr() : '12:00';
@@ -2877,7 +3079,7 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     }
     const wasEditing = !!editingEntryId;
     await saveState(); closeEntrySheet();
-    if(activeTab!=='corse') document.querySelector('.tabs button[data-tab="corse"]').click(); else renderMain();
+    if(activeTab!=='oggi') document.querySelector('.tabs button[data-tab="oggi"]').click(); else renderMain();
     showToast(wasEditing ? 'Voce aggiornata' : 'Voce salvata');
   });
 
