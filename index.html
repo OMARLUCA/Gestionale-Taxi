@@ -305,6 +305,21 @@
   .disclaimer{background:var(--surface-2); border:1px dashed var(--border); border-radius:11px; padding:12px; font-size:11.5px; color:var(--ink-muted); line-height:1.5; margin-bottom:14px;}
 
   .input-row{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;}
+  .corr-day-row{display:flex; align-items:center; gap:10px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px dashed var(--border);}
+  .corr-day-row:last-child{border-bottom:none; margin-bottom:0; padding-bottom:0;}
+  .corr-day-label{width:58px; flex-shrink:0;}
+  .corr-day-label .d{font-weight:800; font-size:15px; color:var(--ink);}
+  .corr-day-label .wd{font-size:10.5px; color:var(--ink-faint); text-transform:uppercase; margin-top:1px;}
+  .corr-day-amt{width:104px; flex-shrink:0; text-align:right; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:15px; font-weight:700; padding:9px 10px; border-radius:9px;}
+  .corr-day-amt.has-value{background:var(--green-soft); border-color:var(--green-line); color:var(--green);}
+  .corr-day-status{flex:1; min-width:0; font-size:12px; font-weight:700; color:var(--ink-faint); text-align:right;}
+  .motivo-select{flex:1; min-width:0; background:var(--surface-3); border:1px solid var(--border); color:var(--ink-muted); font-family:'Inter', sans-serif; font-size:13.5px; font-weight:700; padding:9px 8px; border-radius:9px; text-align:right; text-align-last:right;}
+  .motivo-select.motivo-ferie{background:var(--amber-soft); border-color:var(--amber-line); color:var(--amber-ink);}
+  .motivo-select.motivo-malattia{background:var(--red-soft); border-color:var(--red-line); color:var(--red);}
+  .motivo-select.motivo-guasto_tecnico{background:var(--blue-soft); border-color:rgba(53,104,176,0.4); color:var(--blue);}
+  .corr-legend{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px; font-size:11px; color:var(--ink-muted);}
+  .corr-legend span{display:flex; align-items:center; gap:5px;}
+  .corr-legend i{width:8px; height:8px; border-radius:50%; display:inline-block; flex-shrink:0;}
   .input-row label{font-size:12.5px; color:var(--ink-muted); flex:1;}
   .input-row input{width:110px; text-align:right; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:14px; padding:8px 10px; border-radius:8px;}
   .input-row input:focus{outline:none; border-color:var(--amber-line);}
@@ -396,6 +411,10 @@
   .field label, .form-row label, .input-row label{ font-size:16px !important; font-weight:700 !important; color:var(--ink-muted) !important; }
   .field input, .form-row input[type=text], .form-row input[type=time], .form-row input[type=date], .form-row input[type=password], .form-row select{ font-size:20px !important; font-weight:600 !important; }
   .input-row input{ font-size:19px !important; font-weight:700 !important; }
+  .corr-day-label .d{ font-size:16px !important; }
+  .corr-day-amt{ font-size:17px !important; }
+  .motivo-select{ font-size:14px !important; }
+  .corr-day-status{ font-size:13px !important; }
   .kv-row{ font-size:18px !important; }
   .kv-row .k{ font-weight:600 !important; }
   .kv-row .v{ font-weight:700 !important; }
@@ -776,6 +795,7 @@
   const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
   const METODI = ['carta','contanti','app','globix','centrale','aggeggio','buoni','satispay'];
   const METODI_ELETTRONICI = ['carta','globix','centrale','buoni','app'];
+  const MOTIVO_LABELS = { riposo:'Riposo', ferie:'Ferie', guasto_tecnico:'Guasto tecnico', malattia:'Malattia' };
 
   function aggregateDayEntries(entries){
     const byTipo = { posteggio:0, radio:0, prenotazione:0 };
@@ -879,9 +899,10 @@
   let tasseRegime = 'confronto';
   let liveTimer = null;
 
-  function getDayReadonly(key){ return state.days[key] || { shiftStart:null, shiftEnd:null, pauseStart:null, pausedMinutes:0, kmStart:null, kmEnd:null, entries:[], corrispettivoOverride:null }; }
+  function getDayReadonly(key){ return state.days[key] || { shiftStart:null, shiftEnd:null, pauseStart:null, pausedMinutes:0, kmStart:null, kmEnd:null, entries:[], corrispettivoOverride:null, giornoMotivo:null }; }
   function ensureDay(key){
-    if(!state.days[key]) state.days[key] = { shiftStart:null, shiftEnd:null, pauseStart:null, pausedMinutes:0, kmStart:null, kmEnd:null, entries:[], corrispettivoOverride:null };
+    if(!state.days[key]) state.days[key] = { shiftStart:null, shiftEnd:null, pauseStart:null, pausedMinutes:0, kmStart:null, kmEnd:null, entries:[], corrispettivoOverride:null, giornoMotivo:null };
+    if(typeof state.days[key].giornoMotivo==='undefined') state.days[key].giornoMotivo = null;
     return state.days[key];
   }
   function getMonthReadonly(key){ return state.months[key] || { dichiarazioneOverride:null, speseMediche:0, ferieGiorni:0, foglioN:null, note:'' }; }
@@ -1843,7 +1864,8 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const imgBytes = b64ToBytes(CORR_TEMPLATE_IMG_B64);
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([CORR_PAGE_W, CORR_PAGE_H]);
+    const CORR_TOP_MARGIN = 22; // margine bianco reale in cima, il logo tocca il bordo dell'immagine sorgente
+    const page = pdfDoc.addPage([CORR_PAGE_W, CORR_PAGE_H + CORR_TOP_MARGIN]);
     const bgImg = await pdfDoc.embedPng(imgBytes);
     page.drawImage(bgImg, { x: 0, y: 0, width: CORR_PAGE_W, height: CORR_PAGE_H });
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -1869,17 +1891,17 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const mrecF = getMonthReadonly(mkeyF);
     drawLeft(String(month+1), 603.7, CORR_PAGE_H-65.8, 12, bold);
     drawLeft(r.codUtente, 725, CORR_PAGE_H-65.8);
-    drawLeft(r.conducente, 165.7, CORR_PAGE_H-103.3);
-    drawLeft(r.indirizzo, 165.7, CORR_PAGE_H-121.5);
-    drawLeft(r.citta, 165.7, CORR_PAGE_H-140.2);
-    drawLeft(r.vettura1, 149.3, CORR_PAGE_H-174.8);
-    drawLeft(r.targa1, 390.7, CORR_PAGE_H-174.8);
-    drawLeft(r.civ1, 583.6, CORR_PAGE_H-174.8);
-    drawLeft(r.alim1, 776.5, CORR_PAGE_H-174.8);
-    drawLeft(r.vettura2, 149.3, CORR_PAGE_H-197.9);
-    drawLeft(r.targa2, 390.7, CORR_PAGE_H-197.9);
-    drawLeft(r.civ2, 583.6, CORR_PAGE_H-197.9);
-    drawLeft(r.alim2, 776.5, CORR_PAGE_H-197.9);
+    drawLeft(r.conducente, 165.7, CORR_PAGE_H-100.5);
+    drawLeft(r.indirizzo, 165.7, CORR_PAGE_H-118.7);
+    drawLeft(r.citta, 165.7, CORR_PAGE_H-137.4);
+    drawLeft(r.vettura1, 149.3, CORR_PAGE_H-172.0);
+    drawLeft(r.targa1, 390.7, CORR_PAGE_H-172.0);
+    drawLeft(r.civ1, 583.6, CORR_PAGE_H-172.0);
+    drawLeft(r.alim1, 776.5, CORR_PAGE_H-172.0);
+    drawLeft(r.vettura2, 149.3, CORR_PAGE_H-195.1);
+    drawLeft(r.targa2, 390.7, CORR_PAGE_H-195.1);
+    drawLeft(r.civ2, 583.6, CORR_PAGE_H-195.1);
+    drawLeft(r.alim2, 776.5, CORR_PAGE_H-195.1);
 
     const daysInMonth = new Date(year, month+1, 0).getDate();
     const CORR_CELL_W = 230; // larghezza misurata della colonna Incasso, dai bordi reali dell'immagine
@@ -1901,20 +1923,25 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     for(let d=1; d<=daysInMonth; d++){
       const dk = dateKey(new Date(year, month, d));
       const eff = corrispettivoEffettivoGiorno(dk);
+      let col, i;
+      if(d<=10){ col=0; i=d-1; }
+      else if(d<=20){ col=1; i=d-11; }
+      else { col=2; i=d-21; }
       if(eff>0){
         total += eff;
         const txt = eff.toLocaleString('it-IT', { minimumFractionDigits:2, maximumFractionDigits:2 });
-        let col, i;
-        if(d<=10){ col=0; i=d-1; }
-        else if(d<=20){ col=1; i=d-11; }
-        else { col=2; i=d-21; }
         drawRight(txt, CORR_COL_X1[col], corrRowY(i));
+      } else {
+        const motivo = getDayReadonly(dk).giornoMotivo;
+        if(motivo && motivo!=='riposo'){
+          drawRight(MOTIVO_LABELS[motivo] || '', CORR_COL_X1[col], corrRowY(i), 9, bold);
+        }
       }
     }
     drawRight(total.toLocaleString('it-IT', { minimumFractionDigits:2, maximumFractionDigits:2 }), 917.3, CORR_PAGE_H-547.1, 12, bold);
 
     const presenze = (()=>{ let c=0; for(let d=1; d<=daysInMonth; d++){ if(corrispettivoEffettivoGiorno(dateKey(new Date(year,month,d)))>0) c++; } return c; })();
-    const ferie = mrecF.ferieGiorni||0;
+    const ferie = (()=>{ let c=0; for(let d=1; d<=daysInMonth; d++){ const dk = dateKey(new Date(year,month,d)); if(corrispettivoEffettivoGiorno(dk)<=0 && getDayReadonly(dk).giornoMotivo==='ferie') c++; } return c; })();
     const riposi = Math.max(0, daysInMonth - presenze - ferie);
     drawLeft(String(presenze), 289.3, CORR_PAGE_H-513.6);
     drawLeft(String(riposi), 289.3, CORR_PAGE_H-536.3);
@@ -2283,53 +2310,72 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const mkeyC = `${y}-${pad(m+1)}`;
     const mrecC = ensureMonth(mkeyC);
     const presenzeCalc = rows.filter(r=>r.eff>0).length;
-    const ferieVal = mrecC.ferieGiorni || 0;
+    const ferieVal = rows.filter(r=> r.eff<=0 && getDayReadonly(r.dk).giornoMotivo==='ferie').length;
     const riposiCalc = Math.max(0, daysInMonth - presenzeCalc - ferieVal);
 
     const regCard = document.createElement('div'); regCard.className='card';
-    regCard.innerHTML = `<h2>Modulo ufficiale — Registro corrispettivi</h2>
-      <div class="subnote" style="margin-bottom:12px;">Compila il tuo modulo reale (Unione Artigiani, Divisione Tassisti) con i minimi calcolati da Corrispettivi. L'intestazione (conducente, veicolo) si imposta una volta sola e resta fissa finché non la cambi tu.</div>
-      <button class="save-btn" id="editRegistroBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border); margin-bottom:14px;">Intestazione registro (conducente, veicolo…)</button>
+    regCard.innerHTML = `<button class="save-btn" id="editRegistroBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border); margin-bottom:14px;">Intestazione registro (conducente, veicolo…)</button>
       <div class="kv-row"><span class="k">Foglio N. (= numero del mese)</span><span class="v">${m+1}</span></div>
-      <div class="input-row"><label>Giorni di ferie nel mese</label><input type="number" id="ferieInput" value="${ferieVal}"></div>
+      <div class="kv-row"><span class="k">Ferie nel mese <span style="font-size:10px; color:var(--amber-ink); background:var(--amber-soft); padding:2px 6px; border-radius:100px; font-weight:700;">AUTO</span></span><span class="v">${ferieVal}</span></div>
       <div class="kv-row"><span class="k">Presenze (giorni con incasso)</span><span class="v">${presenzeCalc}</span></div>
       <div class="kv-row"><span class="k">Riposi (per differenza)</span><span class="v">${riposiCalc}</span></div>
-      <div class="form-row" style="margin-top:12px;"><label>Note (vanno nelle Annotazioni del PDF)</label><textarea id="noteInput" rows="3" style="width:100%; box-sizing:border-box; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'Inter', sans-serif; font-size:14px; padding:10px; border-radius:9px; resize:vertical;">${escapeHtml(mrecC.note||'')}</textarea></div>
-      <button class="save-btn" id="exportModuloMese" style="margin-top:10px;">Compila modulo di ${MESI_FULL[m]} (PDF)</button>
-      <button class="save-btn" id="exportLibroAnno" style="margin-top:10px;">Esporta libro ${y} completo (PDF)</button>`;
+      <div class="form-row" style="margin-top:12px;"><label>Note (vanno nelle Annotazioni del PDF)</label><textarea id="noteInput" rows="3" style="width:100%; box-sizing:border-box; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'Inter', sans-serif; font-size:14px; padding:10px; border-radius:9px; resize:vertical;">${escapeHtml(mrecC.note||'')}</textarea></div>`;
     container.appendChild(regCard);
 
     let mTO=null;
-    regCard.querySelector('#ferieInput').addEventListener('input', (e)=>{
-      const val = parseInt(e.target.value,10);
-      clearTimeout(mTO);
-      mTO = setTimeout(async ()=>{ const mr = ensureMonth(mkeyC); mr.ferieGiorni = isNaN(val)?0:val; await saveState(); renderMain(); }, 500);
-    });
     regCard.querySelector('#noteInput').addEventListener('input', (e)=>{
       const val = e.target.value;
       clearTimeout(mTO);
       mTO = setTimeout(async ()=>{ const mr = ensureMonth(mkeyC); mr.note = val; await saveState(); }, 500);
     });
     regCard.querySelector('#editRegistroBtn').addEventListener('click', openRegistroSheet);
-    regCard.querySelector('#exportModuloMese').addEventListener('click', function(){
+
+    const listCard = document.createElement('div'); listCard.className='card';
+    listCard.innerHTML = `<h2>Giorno per giorno</h2><div class="subnote" style="margin-bottom:12px;">Tocca il menu solo sui giorni che NON sono un riposo normale.</div>`;
+    rows.forEach(r=>{
+      const row = document.createElement('div'); row.className='corr-day-row';
+      const isZero = r.eff<=0;
+      const motivo = getDayReadonly(r.dk).giornoMotivo || 'riposo';
+      const dayLabel = document.createElement('div'); dayLabel.className='corr-day-label';
+      dayLabel.innerHTML = `<div class="d">${r.date.getDate()} ${MESI[m]}</div><div class="wd">${GIORNI[r.date.getDay()]}</div>`;
+      row.appendChild(dayLabel);
+      const amt = document.createElement('input'); amt.type='number'; amt.step='0.01'; amt.dataset.dk=r.dk; amt.value=r.eff.toFixed(2);
+      amt.className = 'corr-day-amt' + (r.eff>0 ? ' has-value' : '');
+      row.appendChild(amt);
+      if(isZero){
+        const sel = document.createElement('select'); sel.className = `motivo-select motivo-${motivo}`; sel.dataset.dk = r.dk;
+        sel.innerHTML = Object.entries(MOTIVO_LABELS).map(([k,label])=> `<option value="${k}" ${motivo===k?'selected':''}>${label}</option>`).join('');
+        row.appendChild(sel);
+      } else {
+        const status = document.createElement('div'); status.className='corr-day-status';
+        status.textContent = r.isOverride ? 'corretto a mano' : 'presenza, automatico';
+        row.appendChild(status);
+      }
+      listCard.appendChild(row);
+    });
+    const legend = document.createElement('div'); legend.className='corr-legend';
+    legend.innerHTML = `<span><i style="background:var(--green);"></i>presenza (incasso &gt; 0)</span>
+      <span><i style="background:var(--ink-faint);"></i>riposo (default)</span>
+      <span><i style="background:var(--amber);"></i>ferie</span>
+      <span><i style="background:var(--red);"></i>malattia</span>
+      <span><i style="background:var(--blue);"></i>guasto tecnico</span>`;
+    listCard.appendChild(legend);
+    container.appendChild(listCard);
+
+    const exportCard = document.createElement('div'); exportCard.className='card';
+    exportCard.innerHTML = `<h2>Esporta PDF</h2>
+      <button class="save-btn" id="exportModuloMese">Compila modulo di ${MESI_FULL[m]} (PDF)</button>
+      <button class="save-btn" id="exportLibroAnno" style="margin-top:10px;">Esporta libro ${y} completo (PDF)</button>`;
+    container.appendChild(exportCard);
+    exportCard.querySelector('#exportModuloMese').addEventListener('click', function(){
       exportModuloMese(y, m, this);
     });
-    regCard.querySelector('#exportLibroAnno').addEventListener('click', function(){
+    exportCard.querySelector('#exportLibroAnno').addEventListener('click', function(){
       exportLibroAnnoUfficiale(y, this);
     });
 
-    const listCard = document.createElement('div'); listCard.className='card';
-    listCard.innerHTML = `<h2>Giorno per giorno</h2>`;
-    rows.forEach(r=>{
-      const row = document.createElement('div'); row.className='input-row';
-      const lbl = `${r.date.getDate()} ${MESI[m]} (${GIORNI[r.date.getDay()]})`;
-      row.innerHTML = `<label>${lbl}${r.isOverride?' · corretto':''}</label><input type="number" step="0.01" data-dk="${r.dk}" value="${r.eff.toFixed(2)}">`;
-      listCard.appendChild(row);
-    });
-    container.appendChild(listCard);
-
     let corrTO=null;
-    listCard.querySelectorAll('input[data-dk]').forEach(inp=>{
+    listCard.querySelectorAll('input.corr-day-amt').forEach(inp=>{
       inp.addEventListener('input', (e)=>{
         const dk = e.target.dataset.dk;
         const val = parseFloat(e.target.value);
@@ -2342,6 +2388,15 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
           await saveState();
           renderMain();
         }, 600);
+      });
+    });
+    listCard.querySelectorAll('select.motivo-select').forEach(sel=>{
+      sel.addEventListener('change', async (e)=>{
+        const dk = e.target.dataset.dk;
+        const day = ensureDay(dk);
+        day.giornoMotivo = e.target.value;
+        await saveState();
+        renderMain();
       });
     });
   }
