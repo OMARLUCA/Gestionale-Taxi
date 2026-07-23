@@ -237,6 +237,21 @@
   .field label{display:block; font-size:11px; color:var(--ink-faint); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;}
   .field input{width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:16px; padding:10px; border-radius:9px;}
   .field input:focus{outline:none; border-color:var(--amber-line);}
+
+  /* --- fix allineamento riquadri km / campi affiancati --- */
+  .km-grid{width:100%; max-width:100%; margin:0;}
+  .km-grid > .field{flex:1 1 0; min-width:0; max-width:100%;}
+  .km-grid > .field input{
+    display:block;
+    width:100%; min-width:0; max-width:100%;
+    margin:0; box-sizing:border-box;
+  }
+  .km-grid > .field input[type=number]{-moz-appearance:textfield;}
+  .km-grid > .field input[type=number]::-webkit-outer-spin-button,
+  .km-grid > .field input[type=number]::-webkit-inner-spin-button{
+    -webkit-appearance:none; margin:0;
+  }
+
   .km-delta{text-align:center; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);}
   .km-delta .num{font-family:'JetBrains Mono', monospace; font-size:26px; color:var(--amber-ink); font-weight:500;}
   .km-delta .lbl{font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.06em;}
