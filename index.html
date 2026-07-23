@@ -3006,20 +3006,18 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
       exportLibroAnnoUfficiale(y, this);
     });
 
-    let corrTO=null;
     listCard.querySelectorAll('input.corr-day-amt').forEach(inp=>{
-      inp.addEventListener('input', (e)=>{
+      inp.addEventListener('focus', (e)=>{ setTimeout(()=>{ try{ e.target.select(); }catch(_){} }, 0); });
+      inp.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); e.target.blur(); } });
+      inp.addEventListener('change', async (e)=>{
         const dk = e.target.dataset.dk;
-        const val = parseFloat(e.target.value);
-        clearTimeout(corrTO);
-        corrTO = setTimeout(async ()=>{
-          const day = ensureDay(dk);
-          const sugg = corrispettivoSuggeritoGiorno(dk);
-          if(isNaN(val) || Math.abs(val-sugg) < 0.005) day.corrispettivoOverride = null;
-          else day.corrispettivoOverride = val;
-          await saveState();
-          renderMain();
-        }, 600);
+        const val = parseFloat((e.target.value||'').toString().replace(',','.'));
+        const day = ensureDay(dk);
+        const sugg = corrispettivoSuggeritoGiorno(dk);
+        if(isNaN(val) || Math.abs(val-sugg) < 0.005) day.corrispettivoOverride = null;
+        else day.corrispettivoOverride = val;
+        await saveState();
+        renderMain();
       });
     });
     listCard.querySelectorAll('select.motivo-select').forEach(sel=>{
