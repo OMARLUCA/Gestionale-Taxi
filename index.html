@@ -1122,11 +1122,14 @@
       info.innerHTML = `<div class="status">In servizio</div><div class="timer" id="liveTimer">00:00:00</div><div class="hint">Tocca per mettere in pausa${kmBit}</div>`;
     } else {
       const mins = workedMinutes(day);
-      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Tocca per iniziare un nuovo turno${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
+      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Modifica gli orari dalla freccia${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
     }
     cap.appendChild(lamp); cap.appendChild(info);
     if(isToday){
-      if(!day.shiftStart || (day.shiftStart && day.shiftEnd)){
+      if(day.shiftStart && day.shiftEnd){
+        // Turno gia' chiuso: non si riavvia con un tocco, si corregge a mano
+        cap.style.cursor = 'default';
+      } else if(!day.shiftStart){
         cap.addEventListener('click', ()=> startShift(dayKey));
       } else if(isRunning){
         cap.addEventListener('click', ()=> pauseShift(dayKey));
@@ -1154,8 +1157,8 @@
     const fineVal = day.shiftEnd ? new Date(day.shiftEnd).toTimeString().slice(0,5) : '';
     tf.innerHTML = `<div class="field"><label>Inizio turno</label><input type="time" id="shiftStartInput" value="${inizioVal}"></div>
       <div class="field"><label>Fine turno</label><input type="time" id="shiftEndInput" value="${fineVal}"></div>`;
-    tf.querySelector('#shiftStartInput').addEventListener('change', (e)=> setShiftStartManual(dayKey, e.target.value));
-    tf.querySelector('#shiftEndInput').addEventListener('change', (e)=> setShiftEndManual(dayKey, e.target.value));
+    bindEditableInput(tf.querySelector('#shiftStartInput'), (v)=> setShiftStartManual(dayKey, v));
+    bindEditableInput(tf.querySelector('#shiftEndInput'), (v)=> setShiftEndManual(dayKey, v));
     panel.appendChild(tf);
     const tfNote = document.createElement('div'); tfNote.className='subnote';
     tfNote.textContent = 'Se ti dimentichi di avviare o fermare il contatore, imposta qui l\'orario a mano.';
@@ -1170,7 +1173,7 @@
       const pauseRow = document.createElement('div'); pauseRow.className='field'; pauseRow.style.marginTop='12px';
       pauseRow.innerHTML = `<label>Minuti di pausa nel turno</label><input type="number" inputmode="numeric" id="pauseMinsInput" value="${day.pausedMinutes||0}">`;
       panel.appendChild(pauseRow);
-      pauseRow.querySelector('#pauseMinsInput').addEventListener('change', (e)=> setPauseMinutesManual(dayKey, e.target.value));
+      bindEditableInput(pauseRow.querySelector('#pauseMinsInput'), (v)=> setPauseMinutesManual(dayKey, v));
       const pauseNote = document.createElement('div'); pauseNote.className='subnote';
       pauseNote.textContent = 'Correggi qui i minuti di pausa se hai dimenticato di riprendere il turno.';
       panel.appendChild(pauseNote);
@@ -1291,8 +1294,37 @@
     }
   }
 
+  // Mentre un campo e' in modifica non ricostruiamo il DOM: l'input verrebbe
+  // distrutto a meta' interazione (la rotella dell'ora si chiude da sola).
+  let renderDeferred = false;
+  function safeRender(){ if(!renderDeferred) renderMain(); }
+  function bindEditableInput(el, commit){
+    if(!el) return;
+    let last = el.value;
+    let t = null;
+    el.addEventListener('focus', ()=>{ renderDeferred = true; });
+    el.addEventListener('change', ()=>{
+      clearTimeout(t);
+      const v = el.value;
+      // salva comunque, ma senza ridisegnare finche' il campo ha il focus
+      t = setTimeout(()=>{ if(v !== last){ last = v; commit(v); } }, 800);
+    });
+    el.addEventListener('blur', ()=>{
+      clearTimeout(t);
+      renderDeferred = false;
+      const v = el.value;
+      if(v !== last){ last = v; commit(v); }
+      else renderMain();
+    });
+  }
+
   async function startShift(dayKey){
     const day = ensureDay(dayKey);
+    // Non sovrascrivere mai un turno gia' avviato o gia' chiuso
+    if(day.shiftStart){
+      showToast('Turno gia\' registrato: modifica gli orari a mano');
+      return;
+    }
     const nowISO = new Date().toISOString();
     day.shiftStart = nowISO; day.shiftEnd = null; day.pauseStart = null; day.pausedMinutes = 0;
     showToast('Turno iniziato');
@@ -1333,29 +1365,29 @@
     const dt = new Date(`${dayKey}T${val}:00`);
     if(day.shiftEnd && dt.getTime() > new Date(day.shiftEnd).getTime()){
       showToast("L'inizio deve essere prima della fine");
-      renderMain();
+      safeRender();
       return;
     }
     day.shiftStart = dt.toISOString();
     showToast('Orario di inizio aggiornato');
-    await saveState(); renderMain();
+    await saveState(); safeRender();
   }
   async function setShiftEndManual(dayKey, val){
     const day = ensureDay(dayKey);
     if(!val){
       day.shiftEnd = null;
-      await saveState(); renderMain();
+      await saveState(); safeRender();
       return;
     }
     if(!day.shiftStart){
       showToast("Imposta prima l'ora di inizio");
-      renderMain();
+      safeRender();
       return;
     }
     const dt = new Date(`${dayKey}T${val}:00`);
     if(dt.getTime() < new Date(day.shiftStart).getTime()){
       showToast("La fine deve essere dopo l'inizio");
-      renderMain();
+      safeRender();
       return;
     }
     if(day.pauseStart){
@@ -1365,7 +1397,7 @@
     }
     day.shiftEnd = dt.toISOString();
     showToast('Orario di fine aggiornato');
-    await saveState(); renderMain();
+    await saveState(); safeRender();
   }
   async function setPauseMinutesManual(dayKey, val){
     const day = ensureDay(dayKey);
@@ -1381,7 +1413,7 @@
       }
     }
     day.pausedMinutes = mins;
-    await saveState(); renderMain();
+    await saveState(); safeRender();
   }
 
   // ---------- KM card ----------
@@ -3641,6 +3673,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
   // ---------- Main render ----------
   function renderMain(){
+    renderDeferred = false;
     renderHeader();
     const main = document.getElementById('mainArea');
     main.innerHTML = '';
