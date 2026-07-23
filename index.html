@@ -1114,7 +1114,13 @@
     cap.appendChild(chev);
     wrap.appendChild(cap);
 
-    if(!shiftDetailsExpanded){ container.appendChild(wrap); return; }
+    if(!shiftDetailsExpanded){
+      container.appendChild(wrap);
+      if(isToday && isRunning) startLiveTimer(day.shiftStart);
+      else if(isToday && isPaused) startPauseTimer(day.pauseStart);
+      else stopLiveTimer();
+      return;
+    }
 
     const panel = document.createElement('div'); panel.className='shift-panel';
 
