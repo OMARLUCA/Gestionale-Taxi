@@ -462,7 +462,7 @@
   .deadline-status{ font-size:13px !important; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 </head>
 <body>
 
@@ -756,6 +756,10 @@
       <div class="field"><label>Prezzo (€)</label><input type="number" step="0.01" id="scanPrezzoInput"></div>
       <div class="field"><label>Metodo</label><input type="text" id="scanMetodoInput"></div>
     </div>
+    <details id="scanRawWrap" style="display:none; margin-top:12px;">
+      <summary id="scanRawSummary" style="font-size:13px; color:var(--ink-muted); cursor:pointer;">Testo letto dalla foto</summary>
+      <pre id="scanRawText" style="white-space:pre-wrap; font-size:12px; line-height:1.45; color:var(--ink-muted); background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:10px; margin-top:8px; max-height:180px; overflow:auto;"></pre>
+    </details>
     <button class="save-btn" id="saveScanBtn" style="margin-top:8px;">Salva corsa</button>
     <button class="save-btn" id="deleteScanBtn" style="margin-top:8px; display:none; background:var(--red-soft); color:var(--red); border:1px solid var(--red-line);">Elimina questa corsa</button>
   </div>
@@ -2083,36 +2087,125 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
   }
 
   // ---------- Scansione corse (OCR gratuito lato client, con revisione manuale) ----------
+  // Corregge gli scambi tipici dell'OCR quando il contesto è certamente numerico
+  function fixDigits(s){
+    return String(s)
+      .replace(/[OoQ]/g,'0').replace(/[lI|!]/g,'1').replace(/[Zz]/g,'2')
+      .replace(/[Ss]/g,'5').replace(/[Bb]/g,'8').replace(/[Gg]/g,'6');
+  }
+  const MESI_OCR = { gen:1, feb:2, mar:3, apr:4, mag:5, giu:6, lug:7, ago:8, set:9, ott:10, nov:11, dic:12 };
+
   function parseCorsaOcrText(text){
     const out = { id:'', data:'', ora:'', da:'', a:'', prezzo:'', metodo:'' };
-    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    if(!text) return out;
 
-    const dt = text.match(/(\d{2}\/\d{2}\/\d{4})\D{0,5}(\d{2}:\d{2})/);
-    if(dt){
-      const [gg,mm,yyyy] = dt[1].split('/');
-      out.data = `${yyyy}-${mm}-${gg}`;
-      out.ora = dt[2];
+    // Normalizza spazi strani e caratteri di rumore, mantenendo le righe
+    const clean = text.replace(/\u00a0/g,' ').replace(/[·•]/g,' ').replace(/[ \t]+/g,' ');
+    const lines = clean.split('\n').map(l=>l.trim()).filter(Boolean);
+    const flat = lines.join(' \n ');
+
+    // ---- Data: gg/mm/aaaa, gg-mm-aa, gg.mm.aaaa, "12 mar 2026" ----
+    let m = flat.match(/(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{2,4})/);
+    if(m){
+      let [ , gg, mm, yy ] = m;
+      let yyyy = yy.length === 2 ? '20'+yy : yy;
+      const g = parseInt(gg,10), mo = parseInt(mm,10);
+      if(g>=1 && g<=31 && mo>=1 && mo<=12) out.data = `${yyyy}-${pad(mo)}-${pad(g)}`;
+    }
+    if(!out.data){
+      m = flat.match(/\b(\d{1,2})\s+(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-z]*\.?\s+(\d{4})/i);
+      if(m) out.data = `${m[3]}-${pad(MESI_OCR[m[2].toLowerCase()])}-${pad(parseInt(m[1],10))}`;
     }
 
-    const idMatch = text.match(/\b\d{6,9}\b/);
-    if(idMatch) out.id = idMatch[0];
+    // ---- Ora: hh:mm, hh.mm, hh mm (scarta quelle impossibili) ----
+    const oraCandidates = [...flat.matchAll(/\b([0-2]?\d)\s*[:.]\s*([0-5]\d)\b/g)]
+      .map(x=>({ h: parseInt(fixDigits(x[1]),10), mi: parseInt(fixDigits(x[2]),10) }))
+      .filter(x=> x.h>=0 && x.h<=23 && x.mi>=0 && x.mi<=59);
+    if(oraCandidates.length) out.ora = `${pad(oraCandidates[0].h)}:${pad(oraCandidates[0].mi)}`;
 
-    const priceMatch = text.match(/€\s*([\d]{1,3}[.,]\d{2})/) || text.match(/\b(\d{1,3}[,.]\d{2})\b/);
-    if(priceMatch) out.prezzo = priceMatch[1].replace('.',',');
+    // ---- ID corsa: prima cerca dopo un'etichetta, poi il numero lungo isolato ----
+    m = flat.match(/(?:id|corsa|ricevuta|scontrino|n[°.]?|num(?:ero)?)\s*[:#\-]?\s*([A-Z0-9\-]{4,20})/i);
+    if(m && /\d/.test(m[1])) out.id = m[1].replace(/[^A-Za-z0-9\-]/g,'');
+    if(!out.id){
+      const idm = flat.match(/\b\d{6,12}\b/);
+      if(idm) out.id = idm[0];
+    }
 
-    const payMatch = text.match(/Pagamento\s*[:\-]?\s*([A-Za-z0-9]+)/i);
-    if(payMatch) out.metodo = payMatch[1];
+    // ---- Prezzo: priorità alle righe con etichetta, poi al valore più alto con € ----
+    const priceOf = (s)=>{
+      const v = parseFloat(String(s).replace(/\s/g,'').replace(',','.'));
+      return isNaN(v) ? null : v;
+    };
+    let prezzo = null;
+    for(const l of lines){
+      if(/(totale|importo|tariffa|da\s*pagare|incasso|corsa)/i.test(l)){
+        const pm = l.match(/(\d{1,4}\s*[.,]\s*\d{2})/);
+        const v = pm && priceOf(pm[1]);
+        if(v!==null && v>0 && v<10000){ prezzo = v; break; }
+      }
+    }
+    if(prezzo===null){
+      const euro = [...flat.matchAll(/(?:€|EUR)\s*(\d{1,4}\s*[.,]\s*\d{2})|(\d{1,4}\s*[.,]\s*\d{2})\s*(?:€|EUR)/gi)]
+        .map(x=> priceOf(x[1] || x[2])).filter(v=> v!==null && v>0 && v<10000);
+      if(euro.length) prezzo = Math.max(...euro);
+    }
+    if(prezzo===null){
+      // ultimo tentativo: numeri decimali che non facciano parte di una data o di un orario
+      const cands = [];
+      const reNum = /(^|[^\d:\/.\-])(\d{1,3}[.,]\d{2})([^\d:\/.\-]|$)/g;
+      let mNum;
+      while((mNum = reNum.exec(flat)) !== null){
+        const v = priceOf(mNum[2]);
+        if(v!==null && v>0 && v<10000) cands.push(v);
+        reNum.lastIndex = mNum.index + mNum[0].length - 1;
+      }
+      if(cands.length) prezzo = Math.max(...cands);
+    }
+    if(prezzo!==null) out.prezzo = prezzo.toFixed(2).replace('.',',');
 
-    const addrRe = /(via|viale|corso|piazza|piazzale|largo|strada|vicolo)\s+[a-zà-ù' ]+,?\s*\d*/gi;
-    const addrs = [];
-    lines.forEach(l=>{
-      const m = l.match(addrRe);
-      if(m) addrs.push(...m);
-    });
-    if(addrs[0]) out.da = addrs[0].trim();
-    if(addrs[1]) out.a = addrs[1].trim();
+    // ---- Metodo di pagamento ----
+    const metodi = [
+      [/contant/i,'Contanti'], [/banc(o)?mat|debito/i,'Bancomat'], [/carta|credit|visa|mastercard|maestro/i,'Carta'],
+      [/\bpos\b/i,'POS'], [/satispay/i,'Satispay'], [/paypal/i,'PayPal'], [/apple\s*pay/i,'Apple Pay'],
+      [/google\s*pay/i,'Google Pay'], [/app\b|in\s*app/i,'App'], [/convenzion|buono|voucher/i,'Convenzione'],
+      [/fattur/i,'Fattura'], [/bonific/i,'Bonifico']
+    ];
+    const payLine = lines.find(l=>/pagament|metodo|incasso/i.test(l)) || flat;
+    for(const [re, label] of metodi){ if(re.test(payLine)){ out.metodo = label; break; } }
+    if(!out.metodo){ for(const [re, label] of metodi){ if(re.test(flat)){ out.metodo = label; break; } } }
+
+    // ---- Indirizzi: prima le etichette esplicite, poi il riconoscimento della via ----
+    const stripLabel = (s)=> s.replace(/^(da|a|partenza|destinazione|origine|arrivo|prelievo|pick[\s-]?up|drop[\s-]?off)\s*[:\-]?\s*/i,'').trim();
+    const viaRe = /((?:via|v\.le|viale|corso|c\.so|piazza|p\.zza|piazzale|largo|lungo\w+|strada|str\.|vicolo|salita|borgo|circonvallazione|stazione|aeroporto|porto|ospedale|hotel|albergo)\s+[A-Za-zÀ-ù'’.\- ]{2,40}(?:,?\s*\d{1,4}[A-Za-z]?)?)/i;
+
+    let da = '', a = '';
+    for(const l of lines){
+      if(!da && /^(da|partenza|origine|prelievo|pick[\s-]?up)\b/i.test(l)) da = stripLabel(l);
+      else if(!a && /^(a|destinazione|arrivo|drop[\s-]?off)\b/i.test(l)) a = stripLabel(l);
+    }
+    if(!da || !a){
+      const addrs = [];
+      lines.forEach(l=>{ const mm2 = l.match(viaRe); if(mm2) addrs.push(mm2[1].trim().replace(/\s{2,}/g,' ')); });
+      if(!da && addrs[0]) da = addrs[0];
+      if(!a && addrs[1]) a = addrs[1];
+    }
+    out.da = (da||'').slice(0,60);
+    out.a = (a||'').slice(0,60);
 
     return out;
+  }
+
+  // Punteggio di qualità della lettura: serve a scegliere fra i due tentativi OCR
+  function ocrScore(p){
+    let s = 0;
+    if(p.prezzo) s += 4;
+    if(p.data) s += 2;
+    if(p.ora) s += 2;
+    if(p.id) s += 1;
+    if(p.da) s += 1;
+    if(p.a) s += 1;
+    if(p.metodo) s += 1;
+    return s;
   }
 
   let scanEditingId = null;
@@ -2126,24 +2219,467 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     document.getElementById('scanPrezzoInput').value = parsed.prezzo ? parsed.prezzo.replace(',','.') : '';
     document.getElementById('scanMetodoInput').value = parsed.metodo||'';
     document.getElementById('deleteScanBtn').style.display = existingId ? 'block' : 'none';
+    const rawWrap = document.getElementById('scanRawWrap');
+    const rawSummary = document.getElementById('scanRawSummary');
+    if(!existingId && lastOcrError){
+      rawSummary.textContent = '⚠️ Perché non ha letto';
+      document.getElementById('scanRawText').textContent = lastOcrError;
+      rawWrap.style.display = 'block';
+      rawWrap.open = true;
+    } else if(!existingId && lastOcrText){
+      rawSummary.textContent = 'Testo letto dalla foto';
+      document.getElementById('scanRawText').textContent = lastOcrText;
+      rawWrap.style.display = 'block';
+      rawWrap.open = false;
+    } else {
+      rawWrap.style.display = 'none';
+    }
     document.getElementById('overlayScan').classList.add('show');
   }
 
+  // ---- Pre-elaborazione dell'immagine: è qui che si gioca la qualità dell'OCR ----
+  function loadImageFromFile(file){
+    return new Promise((resolve, reject)=>{
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = ()=>{ URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = ()=>{
+        URL.revokeObjectURL(url);
+        // Alcuni formati (HEIC di iPhone, WebP su browser vecchi) non passano da <img>:
+        // secondo tentativo con createImageBitmap, che usa un decodificatore diverso.
+        if(typeof createImageBitmap === 'function'){
+          createImageBitmap(file).then(resolve).catch(()=> reject(new Error('formato immagine non supportato dal telefono')));
+        } else {
+          reject(new Error('formato immagine non supportato dal telefono'));
+        }
+      };
+      img.src = url;
+    });
+  }
+
+  // Porta l'immagine a una dimensione utile: Tesseract lavora male sotto i ~1000px
+  // e spreca tempo sopra i ~1900px.
+  function fileToCanvas(img){
+    const long = Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height);
+    let scale = 1;
+    if(long > 1900) scale = 1900/long;
+    else if(long < 1100) scale = Math.min(2.5, 1100/long);
+    const w = Math.max(1, Math.round((img.naturalWidth||img.width) * scale));
+    const h = Math.max(1, Math.round((img.naturalHeight||img.height) * scale));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return c;
+  }
+
+  function cloneCanvas(src){
+    const c = document.createElement('canvas');
+    c.width = src.width; c.height = src.height;
+    c.getContext('2d').drawImage(src, 0, 0);
+    return c;
+  }
+
+  // mode 'gray' = solo scala di grigi + contrasto; mode 'bw' = binarizzazione adattiva
+  // (soglia locale, regge le foto con luce non uniforme o riflessi sul display).
+  function ocrPreprocess(canvas, mode){
+    const ctx = canvas.getContext('2d', { willReadFrequently:true });
+    const w = canvas.width, h = canvas.height;
+    const imgData = ctx.getImageData(0,0,w,h);
+    const d = imgData.data;
+    const gray = new Float32Array(w*h);
+    let sum = 0;
+    for(let i=0,p=0; p<w*h; i+=4, p++){
+      const v = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+      gray[p] = v; sum += v;
+    }
+    // Display scuri con scritte chiare: invertiamo, Tesseract vuole testo nero su bianco
+    const mean = sum/(w*h);
+    if(mean < 110){ for(let p=0;p<w*h;p++) gray[p] = 255 - gray[p]; }
+
+    if(mode === 'gray'){
+      // stiramento del contrasto sui percentili, così i grigi slavati diventano leggibili
+      const hist = new Uint32Array(256);
+      for(let p=0;p<w*h;p++) hist[gray[p]|0]++;
+      const total = w*h, cut = total*0.02;
+      let lo = 0, hi = 255, acc = 0;
+      for(let v=0; v<256; v++){ acc += hist[v]; if(acc > cut){ lo = v; break; } }
+      acc = 0;
+      for(let v=255; v>=0; v--){ acc += hist[v]; if(acc > cut){ hi = v; break; } }
+      const range = Math.max(1, hi - lo);
+      for(let i=0,p=0; p<w*h; i+=4, p++){
+        let v = ((gray[p] - lo) / range) * 255;
+        v = v < 0 ? 0 : (v > 255 ? 255 : v);
+        d[i] = d[i+1] = d[i+2] = v; d[i+3] = 255;
+      }
+      ctx.putImageData(imgData, 0, 0);
+      return canvas;
+    }
+
+    // Binarizzazione adattiva (Bradley) con immagine integrale
+    const iw = w+1;
+    const integral = new Float64Array(iw*(h+1));
+    for(let y=0; y<h; y++){
+      let rowSum = 0;
+      for(let x=0; x<w; x++){
+        rowSum += gray[y*w+x];
+        integral[(y+1)*iw + (x+1)] = integral[y*iw + (x+1)] + rowSum;
+      }
+    }
+    const rad = Math.max(8, Math.round(Math.min(w,h)/26));
+    const t = 0.87;
+    for(let y=0; y<h; y++){
+      const y0 = Math.max(0, y-rad), y1 = Math.min(h-1, y+rad);
+      for(let x=0; x<w; x++){
+        const x0 = Math.max(0, x-rad), x1 = Math.min(w-1, x+rad);
+        const count = (x1-x0+1)*(y1-y0+1);
+        const s = integral[(y1+1)*iw + (x1+1)] - integral[y0*iw + (x1+1)] - integral[(y1+1)*iw + x0] + integral[y0*iw + x0];
+        const v = gray[y*w+x] < (s/count)*t ? 0 : 255;
+        const i = (y*w+x)*4;
+        d[i] = d[i+1] = d[i+2] = v; d[i+3] = 255;
+      }
+    }
+    ctx.putImageData(imgData, 0, 0);
+    return canvas;
+  }
+
+  // ---- Motore OCR: caricamento con doppio CDN, timeout e diagnostica ----
+  // Il vecchio messaggio "lettura non riuscita" nascondeva la causa vera: quasi sempre
+  // non è la foto, è il motore che non riesce a scaricarsi (rete assente, lenta o filtrata).
+  let lastOcrError = '';
+  let lastOcrText = '';
+  let ocrLastPct = -1;
+
+  function withTimeout(promise, ms, label){
+    let t;
+    const timeout = new Promise((_, rej)=>{
+      t = setTimeout(()=> rej(new Error(label + ': tempo scaduto dopo ' + Math.round(ms/1000) + 's')), ms);
+    });
+    return Promise.race([promise, timeout]).finally(()=> clearTimeout(t));
+  }
+
+  function loadScriptOnce(url){
+    return new Promise((resolve, reject)=>{
+      const s = document.createElement('script');
+      s.src = url;
+      s.async = true;
+      s.onload = ()=> resolve();
+      s.onerror = ()=> reject(new Error('script non raggiungibile: ' + url));
+      document.head.appendChild(s);
+    });
+  }
+
+  const TESS_SCRIPTS = [
+    'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+    'https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js'
+  ];
+  async function ensureTesseractLoaded(){
+    if(typeof Tesseract !== 'undefined') return;
+    let err = null;
+    for(const url of TESS_SCRIPTS){
+      try{
+        await withTimeout(loadScriptOnce(url), 25000, 'download libreria');
+        if(typeof Tesseract !== 'undefined') return;
+      }catch(e){ err = e; }
+    }
+    throw err || new Error('libreria OCR non caricata');
+  }
+
+  // Ordine dei tentativi: prima il più leggero da scaricare.
+  // I dati "fast" pesano ~1,5 MB contro i ~6,7 MB di quelli standard, e il core
+  // solo-LSTM ~2,8 MB contro 3,3: su rete mobile è la differenza fra riuscire e no.
+  const OCR_SETUPS = [
+    {
+      _nome: 'leggero (jsDelivr, dati fast)',
+      corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js',
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast'
+    },
+    {
+      _nome: 'leggero senza SIMD (iPhone datati)',
+      corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-lstm.wasm.js',
+      langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast'
+    },
+    { _nome: 'standard (impostazioni predefinite)' },
+    {
+      _nome: 'mirror unpkg',
+      workerPath: 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js',
+      corePath: 'https://unpkg.com/tesseract.js-core@5.1.1',
+      langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/ita@1.0.0'
+    }
+  ];
+  let ocrSetupUsato = '';
+  let ocrTentativi = [];
+
+  function ocrLogger(m){
+    if(!m) return;
+    if(m.status === 'recognizing text' && typeof m.progress === 'number'){
+      const pct = Math.round(m.progress*100);
+      if(pct % 10 === 0 && pct !== ocrLastPct){ ocrLastPct = pct; showToast(`Lettura foto… ${pct}%`); }
+    } else if(m.status && /downloading|loading|initializ/i.test(m.status)){
+      showToast('Scarico il motore di lettura (solo la prima volta)…');
+    }
+  }
+
+  let ocrWorkerPromise = null;
+  async function createOcrWorker(){
+    await ensureTesseractLoaded();
+    ocrTentativi = [];
+    let lastErr = null;
+    for(const setup of OCR_SETUPS){
+      const opts = Object.assign({ logger: ocrLogger }, setup);
+      delete opts._nome;
+      try{
+        const worker = await withTimeout(
+          Tesseract.createWorker('ita', 1, opts),
+          180000, 'preparazione motore'
+        );
+        await worker.setParameters({ preserve_interword_spaces:'1', user_defined_dpi:'300' });
+        ocrSetupUsato = setup._nome;
+        ocrTentativi.push('✓ ' + setup._nome);
+        return worker;
+      }catch(e){
+        lastErr = e;
+        ocrTentativi.push('✗ ' + setup._nome + ' → ' + ((e && e.message) || e));
+      }
+    }
+    const err = new Error('nessun canale disponibile — ' + ocrTentativi.join(' | '));
+    err.cause = lastErr;
+    throw err;
+  }
+
+  function getOcrWorker(){
+    if(!ocrWorkerPromise){
+      ocrWorkerPromise = createOcrWorker().catch(err=>{ ocrWorkerPromise = null; throw err; });
+    }
+    return ocrWorkerPromise;
+  }
+
+  // Scalda il motore appena si apre la tab: alla prima foto è già pronto
+  function warmUpOcr(){ try{ getOcrWorker().catch(()=>{}); }catch(e){} }
+
+  function ocrErrorHint(e){
+    const msg = (e && (e.message || String(e))) || 'errore sconosciuto';
+    if(typeof navigator !== 'undefined' && navigator.onLine === false){
+      return 'Sei offline. La prima lettura ha bisogno della connessione per scaricare il motore: fallo una volta sotto Wi-Fi, poi resta salvato nel telefono.';
+    }
+    if(/tempo scaduto/i.test(msg)) return 'Il motore ci ha messo troppo a scaricarsi (circa 4 MB la prima volta). Riprova sotto Wi-Fi.';
+    if(/script non raggiungibile|network|fetch|failed to load/i.test(msg)) return 'Non riesco a scaricare il motore di lettura: la rete che stai usando lo blocca o è assente.';
+    if(/formato immagine/i.test(msg)) return 'Questa immagine non è leggibile dal browser (spesso capita con gli HEIC): prova a scattarla di nuovo, oppure aprila in Foto e salvala come JPEG.';
+    if(/memor|allocat/i.test(msg)) return 'Memoria insufficiente per elaborare la foto: chiudi le altre app e riprova.';
+    return msg;
+  }
+
   async function runOcrOnFile(file){
-    showToast('Lettura foto in corso… (può richiedere qualche secondo)');
+    ocrLastPct = -1;
+    lastOcrError = '';
+    showToast('Lettura foto in corso…');
+
+    // 1) Immagine
+    let base = null;
     try{
-      const { data } = await Tesseract.recognize(file, 'ita', {});
-      const parsed = parseCorsaOcrText(data.text || '');
-      openScanReviewSheet(parsed, null);
-      showToast('Controlla i dati letti prima di salvare');
+      const img = await loadImageFromFile(file);
+      base = fileToCanvas(img);
     }catch(e){
-      console.error(e);
-      showToast('Lettura non riuscita, inserisci i dati a mano');
+      console.error('OCR/immagine', e);
+      lastOcrError = ocrErrorHint(e);
+      lastOcrText = '';
+      showToast('Foto non leggibile: inserisci i dati a mano');
+      openScanReviewSheet({}, null);
+      return;
+    }
+
+    // 2) Motore
+    let worker = null;
+    try{
+      worker = await getOcrWorker();
+    }catch(e){
+      console.error('OCR/motore', e);
+      lastOcrError = ocrErrorHint(e) + '\n\nDettaglio tecnico: ' + ((e && e.message) || e);
+      lastOcrText = '';
+      showToast('Motore di lettura non disponibile: dati a mano');
+      openScanReviewSheet({}, null);
+      return;
+    }
+
+    // 3) Lettura: se la pre-elaborazione fallisce si usa comunque l'immagine originale
+    const safePre = (mode)=>{
+      try{ return ocrPreprocess(cloneCanvas(base), mode); }
+      catch(err){ console.warn('pre-elaborazione saltata', err); return base; }
+    };
+    try{
+      await worker.setParameters({ tessedit_pageseg_mode: '6' });
+      let res = await withTimeout(worker.recognize(safePre('bw')), 180000, 'lettura');
+      let best = parseCorsaOcrText(res.data.text || '');
+      let bestText = res.data.text || '';
+
+      if(ocrScore(best) < 6){
+        ocrLastPct = -1;
+        await worker.setParameters({ tessedit_pageseg_mode: '11' });
+        res = await withTimeout(worker.recognize(safePre('gray')), 180000, 'lettura');
+        const alt = parseCorsaOcrText(res.data.text || '');
+        if(ocrScore(alt) > ocrScore(best)){ best = alt; bestText = res.data.text || ''; }
+      }
+
+      lastOcrText = bestText;
+      openScanReviewSheet(best, null);
+      const s = ocrScore(best);
+      showToast(s >= 6 ? 'Controlla i dati letti prima di salvare'
+              : (s > 0 ? 'Lettura parziale: completa i campi mancanti'
+                       : 'Testo non riconosciuto: controlla la foto e inserisci a mano'));
+    }catch(e){
+      console.error('OCR/lettura', e);
+      // Un worker andato in errore resta rotto: lo si butta, il prossimo tentativo lo ricrea
+      try{ worker.terminate(); }catch(_){}
+      ocrWorkerPromise = null;
+      lastOcrError = ocrErrorHint(e) + '\n\nDettaglio tecnico: ' + ((e && e.message) || e);
+      lastOcrText = '';
+      showToast('Lettura non riuscita: vedi "Perché non ha letto"');
       openScanReviewSheet({}, null);
     }
   }
 
+  // ---- Autodiagnosi: dice esattamente quale passaggio si rompe ----
+  function probeFetch(url, ms){
+    const t0 = Date.now();
+    return withTimeout(fetch(url, { cache:'no-store' }), ms || 20000, 'download di prova')
+      .then(async (res)=>{
+        try{ if(res.body && res.body.cancel) await res.body.cancel(); }catch(_){}
+        return { ok: res.ok, status: res.status, ms: Date.now()-t0 };
+      })
+      .catch((e)=> ({ ok:false, err: (e && e.message) || String(e), ms: Date.now()-t0 }));
+  }
+
+  function probeBlobWorker(){
+    return new Promise((resolve)=>{
+      try{
+        if(typeof Worker === 'undefined'){ resolve({ ok:false, err:'Worker non supportato dal browser' }); return; }
+        const url = URL.createObjectURL(new Blob(['self.onmessage=function(){self.postMessage("ok");};'], { type:'text/javascript' }));
+        const w = new Worker(url);
+        const timer = setTimeout(()=>{ try{ w.terminate(); }catch(_){} resolve({ ok:false, err:'nessuna risposta entro 5s' }); }, 5000);
+        w.onmessage = ()=>{ clearTimeout(timer); try{ w.terminate(); URL.revokeObjectURL(url); }catch(_){} resolve({ ok:true }); };
+        w.onerror = (ev)=>{ clearTimeout(timer); resolve({ ok:false, err: (ev && ev.message) || 'worker da blob bloccato (CSP?)' }); };
+        w.postMessage(1);
+      }catch(e){ resolve({ ok:false, err: (e && e.message) || String(e) }); }
+    });
+  }
+
+  async function runOcrDiagnostica(btn, box){
+    btn.disabled = true;
+    const steps = [];
+    const paint = ()=>{
+      box.innerHTML = steps.map(s=>`<div style="margin-bottom:6px;">${s}</div>`).join('') +
+        `<button id="ocrDiagCopy" class="save-btn" style="margin-top:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">📋 Copia il rapporto</button>`;
+      const cp = document.getElementById('ocrDiagCopy');
+      if(cp) cp.addEventListener('click', ()=>{
+        const txt = steps.map(s=> s.replace(/<[^>]+>/g,'')).join('\n');
+        if(navigator.clipboard) navigator.clipboard.writeText(txt).then(()=> showToast('Rapporto copiato'), ()=> showToast('Copia non riuscita'));
+        else showToast('Copia non supportata su questo browser');
+      });
+    };
+    const add = (t)=>{ steps.push(t); paint(); };
+    const setLast = (t)=>{ steps[steps.length-1] = t; paint(); };
+
+    // 1) Ambiente
+    const proto = location.protocol;
+    const problemiAmbiente = [];
+    if(proto === 'file:') problemiAmbiente.push('la pagina è aperta come file locale');
+    if(typeof Worker === 'undefined') problemiAmbiente.push('Web Worker non disponibili');
+    if(typeof WebAssembly === 'undefined') problemiAmbiente.push('WebAssembly non disponibile');
+    add(`${problemiAmbiente.length ? '✗' : '✓'} Ambiente: ${proto}//${location.host || '(locale)'} · contesto sicuro: ${window.isSecureContext ? 'sì' : 'no'} · Worker: ${typeof Worker !== 'undefined' ? 'sì' : 'no'} · WebAssembly: ${typeof WebAssembly !== 'undefined' ? 'sì' : 'no'}`);
+    if(proto === 'file:'){
+      add('<b>Trovato il problema: la pagina è aperta come file locale (file://). In questa modalità il browser vieta i Web Worker e i download da altri siti, quindi l\'OCR non potrà mai partire. Serve aprire l\'app da un indirizzo https:// (un hosting qualsiasi, anche gratuito).</b>');
+      btn.disabled = false; return;
+    }
+
+    // 2) Worker da blob (è così che Tesseract si avvia)
+    add('… Verifico i Web Worker');
+    const bw = await probeBlobWorker();
+    setLast(bw.ok ? '✓ Web Worker funzionanti' : '✗ Web Worker bloccati: ' + bw.err);
+    if(!bw.ok){
+      add('<b>Il browser impedisce l\'avvio dei worker: di solito è una Content-Security-Policy del sito che ospita l\'app (serve worker-src blob:) o una modalità di navigazione molto restrittiva.</b>');
+      btn.disabled = false; return;
+    }
+
+    // 3) Rete verso i CDN
+    add('… Provo i server dei componenti');
+    const probes = [
+      ['libreria (jsDelivr)', 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js'],
+      ['motore wasm (jsDelivr)', 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1/tesseract-core-simd-lstm.wasm.js'],
+      ['lingua italiana (tessdata fast)', 'https://tessdata.projectnaptha.com/4.0.0_fast/ita.traineddata.gz'],
+      ['mirror unpkg', 'https://unpkg.com/tesseract.js@5.1.1/dist/worker.min.js']
+    ];
+    steps.pop();
+    let reteOk = 0;
+    for(const [nome, url] of probes){
+      const r = await probeFetch(url, 20000);
+      if(r.ok) reteOk++;
+      add(`${r.ok ? '✓' : '✗'} ${nome}: ${r.ok ? r.status + ' in ' + r.ms + ' ms' : (r.err || 'HTTP ' + r.status)}`);
+    }
+    if(reteOk === 0){
+      add('<b>Nessun componente è raggiungibile: la rete che stai usando blocca questi download (capita con alcune reti aziendali, VPN, blocchi pubblicità o DNS filtrati). Prova con un\'altra connessione o disattiva il filtro.</b>');
+      btn.disabled = false; return;
+    }
+
+    // 4) Avvio motore
+    add('… Avvio il motore (la prima volta scarica ~4 MB)');
+    let worker;
+    try{
+      worker = await getOcrWorker();
+      setLast('✓ Motore pronto — canale: ' + (ocrSetupUsato || 'predefinito'));
+      if(ocrTentativi.length > 1) add('Tentativi: ' + ocrTentativi.join(' · '));
+    }catch(e){
+      setLast('✗ Motore non avviato');
+      (ocrTentativi.length ? ocrTentativi : ['nessun dettaglio']).forEach(t=> add('· ' + t));
+      add('<b>' + ocrErrorHint(e) + '</b>');
+      btn.disabled = false; return;
+    }
+
+    // 5) Lettura di prova su un testo generato dall'app
+    add('… Lettura di prova');
+    try{
+      const c = document.createElement('canvas');
+      c.width = 720; c.height = 180;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+      ctx.fillStyle = '#000'; ctx.font = 'bold 58px Helvetica, Arial, sans-serif';
+      ctx.fillText('Totale 12,50 EUR', 26, 110);
+      await worker.setParameters({ tessedit_pageseg_mode: '6' });
+      const res = await withTimeout(worker.recognize(c), 120000, 'lettura di prova');
+      const txt = (res.data.text || '').replace(/\s+/g,' ').trim();
+      if(/12[.,]50/.test(txt)){
+        setLast('✓ Lettura di prova riuscita: "' + txt + '"');
+        add('<b>Il motore funziona. Se le tue foto non vengono lette, il problema è l\'immagine: inquadra solo il riquadro con i dati, tieni il telefono parallelo allo schermo, a fuoco, senza riflessi.</b>');
+      } else {
+        setLast('✗ Lettura di prova imprecisa: "' + txt + '"');
+        add('<b>Il motore parte ma legge male anche un testo perfetto: probabile memoria insufficiente. Chiudi le altre app e riprova.</b>');
+      }
+    }catch(e){
+      setLast('✗ Lettura di prova: ' + ((e && e.message) || e));
+      add('<b>' + ocrErrorHint(e) + '</b>');
+    }
+    btn.disabled = false;
+  }
+
   function truncateText(s, n){ s=s||''; return s.length>n ? s.slice(0,n-1)+'…' : s; }
+
+  // Helvetica standard accetta solo WinAnsi: un carattere strano letto dall'OCR
+  // farebbe fallire tutta la generazione del PDF, quindi ripuliamo prima.
+  const WINANSI_EXTRA = new Set([0x20AC,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,0x02C6,0x2030,0x0160,0x2039,0x0152,0x017D,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,0x02DC,0x2122,0x0161,0x203A,0x0153,0x017E,0x0178]);
+  function pdfSafe(s){
+    let out = '';
+    for(const ch of String(s==null?'':s)){
+      const c = ch.codePointAt(0);
+      if(c === 10 || c === 13) { out += ' '; continue; }
+      if(c >= 32 && c <= 126) out += ch;
+      else if(c >= 160 && c <= 255) out += ch;
+      else if(WINANSI_EXTRA.has(c)) out += ch;
+      else out += ' ';
+    }
+    return out.replace(/\s{2,}/g,' ').trim();
+  }
 
   async function buildScansioniPdf(){
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
@@ -2151,57 +2687,119 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
     const black = rgb(0,0,0);
-    const W = 595.28, H = 841.89, marginX = 45;
-    const colX = { data: marginX, ora: marginX+58, id: marginX+96, da: marginX+150, a: marginX+290, imp: W-marginX-55 };
+    const grey = rgb(0.45,0.45,0.45);
+    const line = rgb(0.75,0.75,0.75);
+    // Orizzontale: servono sette colonne, in verticale gli indirizzi non ci starebbero
+    const W = 841.89, H = 595.28, marginX = 40;
+    const colX = { data: marginX, ora: marginX+56, id: marginX+94, da: marginX+168, a: marginX+372, met: marginX+576 };
+    const impRight = W - marginX;
 
-    let page = pdfDoc.addPage([W,H]);
-    let y = H - 50;
+    let page, y;
     const anag = state.settings.scanAnagrafica || {};
+    const list = [...(state.scansioni||[])].sort((a,b)=> (a.data||'').localeCompare(b.data||'') || (a.ora||'').localeCompare(b.ora||''));
 
-    page.drawText('Riepilogo corse', { x: marginX, y, size:18, font: bold, color: black }); y -= 24;
-    page.drawText(`Conducente: ${anag.nome||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
-    page.drawText(`Sigla taxi: ${anag.sigla||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
-    page.drawText(`Seriale: ${anag.seriale||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
-    page.drawText(`IBAN: ${anag.iban||'—'}`, { x: marginX, y, size:10.5, font, color: black }); y -= 15;
-    page.drawText(`Generato il: ${new Date().toLocaleDateString('it-IT')}`, { x: marginX, y, size:9, font, color: rgb(0.4,0.4,0.4) }); y -= 22;
-
+    // Taglia il testo alla larghezza reale della colonna, non a un numero fisso di caratteri
+    function fit(text, maxW, size){
+      let s = pdfSafe(text) || '—';
+      if(font.widthOfTextAtSize(s, size) <= maxW) return s;
+      while(s.length > 1 && font.widthOfTextAtSize(s + '…', size) > maxW) s = s.slice(0, -1);
+      return s + '…';
+    }
+    function drawRight(text, x1, yy, size, f){
+      const s = pdfSafe(text);
+      const fnt = f || font;
+      page.drawText(s, { x: x1 - fnt.widthOfTextAtSize(s, size), y: yy, size, font: fnt, color: black });
+    }
     function drawHeaderRow(){
       page.drawText('Data', {x:colX.data, y, size:9, font:bold, color:black});
       page.drawText('Ora', {x:colX.ora, y, size:9, font:bold, color:black});
-      page.drawText('ID', {x:colX.id, y, size:9, font:bold, color:black});
+      page.drawText('ID corsa', {x:colX.id, y, size:9, font:bold, color:black});
       page.drawText('Da', {x:colX.da, y, size:9, font:bold, color:black});
       page.drawText('A', {x:colX.a, y, size:9, font:bold, color:black});
-      page.drawText('Importo', {x:colX.imp, y, size:9, font:bold, color:black});
-      y -= 5;
-      page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:0.7, color:black });
-      y -= 13;
+      page.drawText('Metodo', {x:colX.met, y, size:9, font:bold, color:black});
+      drawRight('Importo', impRight, y, 9, bold);
+      y -= 6;
+      page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:0.8, color:black });
+      y -= 14;
     }
+    function newPage(withHeader){
+      page = pdfDoc.addPage([W,H]);
+      y = H - 45;
+      if(withHeader) drawHeaderRow();
+    }
+
+    newPage(false);
+
+    // ---- Intestazione: tutti i dati dell'anagrafica impostati nelle impostazioni ----
+    page.drawText('Riepilogo corse scansionate', { x: marginX, y, size:18, font: bold, color: black });
+    drawRight(`Generato il ${new Date().toLocaleDateString('it-IT')}`, impRight, y+2, 9, font);
+    y -= 22;
+
+    const anagRows = [
+      ['Conducente', anag.nome],
+      ['Sigla taxi', anag.sigla],
+      ['Seriale', anag.seriale],
+      ['IBAN di accredito', anag.iban]
+    ];
+    anagRows.forEach(([k,v])=>{
+      page.drawText(pdfSafe(k)+':', { x: marginX, y, size:10, font: bold, color: grey });
+      page.drawText(pdfSafe(v) || '—', { x: marginX+110, y, size:10, font, color: black });
+      y -= 14;
+    });
+
+    const primaData = list.find(e=>e.data), ultimaData = [...list].reverse().find(e=>e.data);
+    if(primaData && ultimaData){
+      const fmtD = (s)=> `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}`;
+      page.drawText(`Periodo: dal ${fmtD(primaData.data)} al ${fmtD(ultimaData.data)}`, { x: marginX, y, size:10, font, color: grey });
+      y -= 14;
+    }
+    y -= 10;
     drawHeaderRow();
 
-    const list = [...(state.scansioni||[])].sort((a,b)=> (a.data||'').localeCompare(b.data||'') || (a.ora||'').localeCompare(b.ora||''));
+    // ---- Righe: ogni campo del foglio "Controlla i dati" finisce nel PDF ----
     let totale = 0;
+    const perMetodo = {};
     for(const e of list){
-      const importo = parseFloat(String(e.prezzo).replace(',','.'))||0;
+      const importo = parseFloat(String(e.prezzo).replace(',','.')) || 0;
       totale += importo;
-      if(y < 60){
-        page = pdfDoc.addPage([W,H]);
-        y = H-50;
-        drawHeaderRow();
-      }
+      const met = pdfSafe(e.metodo) || 'Non indicato';
+      perMetodo[met] = (perMetodo[met] || 0) + importo;
+
+      if(y < 70) newPage(true);
+
       const dataFmt = e.data ? `${e.data.slice(8,10)}/${e.data.slice(5,7)}/${e.data.slice(2,4)}` : '—';
-      page.drawText(dataFmt, {x:colX.data, y, size:8.5, font, color:black});
-      page.drawText(e.ora||'—', {x:colX.ora, y, size:8.5, font, color:black});
-      page.drawText(truncateText(e.id,10), {x:colX.id, y, size:8.5, font, color:black});
-      page.drawText(truncateText(e.da,24), {x:colX.da, y, size:8.5, font, color:black});
-      page.drawText(truncateText(e.a,24), {x:colX.a, y, size:8.5, font, color:black});
-      page.drawText(fmtMoney(importo)+' €', {x:colX.imp, y, size:8.5, font, color:black});
-      y -= 13.5;
+      page.drawText(dataFmt, {x:colX.data, y, size:9, font, color:black});
+      page.drawText(pdfSafe(e.ora) || '—', {x:colX.ora, y, size:9, font, color:black});
+      page.drawText(fit(e.id, 68, 9), {x:colX.id, y, size:9, font, color:black});
+      page.drawText(fit(e.da, 198, 9), {x:colX.da, y, size:9, font, color:black});
+      page.drawText(fit(e.a, 198, 9), {x:colX.a, y, size:9, font, color:black});
+      page.drawText(fit(e.metodo, 64, 9), {x:colX.met, y, size:9, font, color:black});
+      drawRight(fmtMoney(importo)+' €', impRight, y, 9, font);
+      y -= 6;
+      page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:0.35, color:line });
+      y -= 10;
     }
-    y -= 8;
-    page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:0.8, color:black });
-    y -= 18;
-    page.drawText('Totale', { x: marginX, y, size:12, font:bold, color:black });
-    page.drawText(`${fmtMoney(totale)} €`, { x: colX.imp-10, y, size:12, font:bold, color:black });
+
+    // ---- Totali ----
+    if(y < 120) newPage(false);
+    y -= 6;
+    page.drawLine({ start:{x:marginX,y}, end:{x:W-marginX,y}, thickness:1, color:black });
+    y -= 20;
+    page.drawText(`Totale ${list.length} ${list.length===1?'corsa':'corse'}`, { x: marginX, y, size:12, font: bold, color: black });
+    drawRight(`${fmtMoney(totale)} €`, impRight, y, 12, bold);
+    y -= 24;
+
+    const metodi = Object.keys(perMetodo).sort();
+    if(metodi.length){
+      page.drawText('Riepilogo per metodo di pagamento', { x: marginX, y, size:10.5, font: bold, color: black });
+      y -= 15;
+      metodi.forEach(k=>{
+        if(y < 50) newPage(false);
+        page.drawText(pdfSafe(k), { x: marginX, y, size:9.5, font, color: black });
+        drawRight(`${fmtMoney(perMetodo[k])} €`, impRight, y, 9.5, font);
+        y -= 13;
+      });
+    }
 
     return pdfDoc;
   }
@@ -2220,9 +2818,14 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
   function renderScansioni(container){
     const card = document.createElement('div'); card.className='card';
     card.innerHTML = `<h2>Scansione corse</h2>
-      <div class="subnote" style="margin-bottom:12px;">Scatta o carica una foto del display: i dati letti restano sempre modificabili prima di salvare. Strumento separato dalla tab Corse.</div>
-      <input type="file" id="scanFileInput" accept="image/*" capture="environment" style="display:none">
-      <button class="save-btn" id="scanBtn">📷 Scansiona una corsa</button>`;
+      <div class="subnote" style="margin-bottom:12px;">Scatta una foto del display oppure scegli un'immagine già salvata nel rullino: i dati letti restano sempre modificabili prima di salvare. Strumento separato dalla tab Corse.</div>
+      <input type="file" id="scanCamInput" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="scanFileInput" accept="image/*" style="display:none">
+      <button class="save-btn" id="scanBtn">📷 Scatta e scansiona</button>
+      <button class="save-btn" id="scanLibBtn" style="margin-top:8px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">🖼️ Scegli dal rullino</button>
+      <div class="subnote" style="margin-top:12px;">Per una lettura pulita: inquadra <b>solo</b> il riquadro con i dati, tieni il telefono dritto e parallelo allo schermo, a fuoco, senza riflessi né ombre.</div>
+      <button class="save-btn" id="ocrDiagBtn" style="margin-top:10px; background:transparent; color:var(--ink-muted); border:1px solid var(--border);">🩺 Verifica il motore di lettura</button>
+      <div id="ocrDiagBox" style="font-size:12.5px; line-height:1.5; color:var(--ink-muted); margin-top:10px;"></div>`;
     container.appendChild(card);
 
     const list = state.scansioni||[];
@@ -2250,13 +2853,21 @@ const CORR_TEMPLATE_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAAecCAIAAACIEfWsAAAAC
     }
 
     document.getElementById('scanBtn').addEventListener('click', ()=>{
+      document.getElementById('scanCamInput').click();
+    });
+    document.getElementById('scanLibBtn').addEventListener('click', ()=>{
       document.getElementById('scanFileInput').click();
     });
-    document.getElementById('scanFileInput').addEventListener('change', (e)=>{
-      const file = e.target.files[0];
+    const onPicked = (e)=>{
+      const file = e.target.files && e.target.files[0];
       if(file) runOcrOnFile(file);
       e.target.value = '';
-    });
+    };
+    document.getElementById('scanCamInput').addEventListener('change', onPicked);
+    document.getElementById('scanFileInput').addEventListener('change', onPicked);
+    const diagBtn = document.getElementById('ocrDiagBtn');
+    diagBtn.addEventListener('click', ()=> runOcrDiagnostica(diagBtn, document.getElementById('ocrDiagBox')));
+    warmUpOcr();
     const genBtn = document.getElementById('genScanPdfBtn');
     if(genBtn && !genBtn.disabled){
       genBtn.addEventListener('click', ()=> exportScansioniPdf(genBtn));
