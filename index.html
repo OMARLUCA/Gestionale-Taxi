@@ -434,6 +434,10 @@
   .quick-add-row .save-btn{margin-top:0;}
   .save-btn:disabled{opacity:0.4;}
 
+  .btn-outline{width:100%; background:var(--surface); color:var(--ink); border:1px solid var(--border); font-family:'Oswald', sans-serif; font-size:13px; letter-spacing:0.04em; text-transform:uppercase; font-weight:600; padding:12px 0; border-radius:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .btn-outline:active{background:var(--surface-3);}
+  .btn-outline .ico{font-size:15px;}
+  .backup-hint{font-size:12px; color:var(--ink-faint); line-height:1.5; margin:0 0 10px;}
   .settings-section{margin-bottom:20px;}
   .settings-section h4{font-family:'Oswald', sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-faint); margin:0 0 10px;}
   .method-toggle-row{display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border);}
@@ -758,6 +762,16 @@
       <div class="form-row"><label>Sigla taxi</label><input type="text" id="setScanSigla"></div>
       <div class="form-row"><label>Seriale</label><input type="text" id="setScanSeriale"></div>
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Backup dati</h4>
+      <p class="backup-hint">Esporta tutti i tuoi dati in un file da conservare. Utile prima di reinstallare l'app o cambiare telefono. L'importazione sostituisce i dati attuali con quelli del file.</p>
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button type="button" class="btn-outline" id="exportData"><span class="ico">⬇︎</span> Esporta dati</button>
+        <button type="button" class="btn-outline" id="importData"><span class="ico">⬆︎</span> Importa dati</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" style="display:none">
     </div>
 
     <button class="save-btn" id="saveSettings">Salva impostazioni</button>
@@ -4139,6 +4153,56 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     overlaySet.classList.remove('show');
     showToast('Impostazioni salvate');
     renderMain();
+  });
+
+  // ---------- Backup: esporta / importa ----------
+  document.getElementById('exportData').addEventListener('click', ()=>{
+    try{
+      const data = JSON.stringify(state, null, 2);
+      const blob = new Blob([data], { type:'application/json' });
+      const url = URL.createObjectURL(blob);
+      const d = new Date();
+      const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `taxigest-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(()=> URL.revokeObjectURL(url), 1000);
+      showToast('Dati esportati');
+    }catch(e){ showToast('Errore nell\'esportazione'); console.error(e); }
+  });
+
+  document.getElementById('importData').addEventListener('click', ()=>{
+    document.getElementById('importFile').click();
+  });
+
+  document.getElementById('importFile').addEventListener('change', async (e)=>{
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if(!file) return;
+    let parsed;
+    try{
+      const text = await file.text();
+      parsed = JSON.parse(text);
+    }catch(err){ showToast('File non valido'); return; }
+    if(!parsed || typeof parsed!=='object' || (!parsed.days && !parsed.months && !parsed.settings)){
+      showToast('Il file non contiene dati validi'); return;
+    }
+    const ok = await askConfirm(
+      'Importare i dati?',
+      'I dati attuali verranno sostituiti con quelli del file. L\'operazione non è reversibile: esporta prima un backup se vuoi conservarli.',
+      'Importa'
+    );
+    if(!ok) return;
+    try{
+      await window.storage.set('taxi31-log', JSON.stringify(parsed), false);
+      await loadState();
+      overlaySet.classList.remove('show');
+      renderMain();
+      showToast('Dati importati');
+    }catch(err){ showToast('Errore nell\'importazione'); console.error(err); }
   });
 
   // ---------- Init ----------
