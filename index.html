@@ -2749,6 +2749,27 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return out.replace(/\s{2,}/g,' ').trim();
   }
 
+  // Periodo reale coperto dalle scansioni (data minima e massima).
+  function scanPeriodo(){
+    const dates = (state.scansioni||[]).map(e=> e && e.data).filter(Boolean).sort();
+    if(!dates.length) return null;
+    return { min: dates[0], max: dates[dates.length-1] };
+  }
+  function fmtDataIt(iso){ return `${iso.slice(8,10)}/${iso.slice(5,7)}/${iso.slice(0,4)}`; }
+  // Titolo usato sia nel PDF sia (in versione "sicura" per i file) come nome del file condiviso.
+  function scanPdfTitolo(){
+    const p = scanPeriodo();
+    if(!p) return 'Riepilogo corse';
+    if(p.min === p.max) return `Riepilogo corse periodo ${fmtDataIt(p.min)}`;
+    return `Riepilogo corse periodo dal ${fmtDataIt(p.min)} al ${fmtDataIt(p.max)}`;
+  }
+  function scanPdfFilename(){
+    const p = scanPeriodo();
+    if(!p) return `Riepilogo corse.pdf`;
+    if(p.min === p.max) return `Riepilogo corse periodo ${fmtDataIt(p.min).replace(/\//g,'-')}.pdf`;
+    return `Riepilogo corse periodo dal ${fmtDataIt(p.min).replace(/\//g,'-')} al ${fmtDataIt(p.max).replace(/\//g,'-')}.pdf`;
+  }
+
   async function buildScansioniPdf(){
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const pdfDoc = await PDFDocument.create();
@@ -2807,7 +2828,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     newPage(false);
 
     // ---- Intestazione: tutti i dati dell'anagrafica impostati nelle impostazioni ----
-    page.drawText('Riepilogo corse scansionate', { x: marginX, y, size:18, font: bold, color: black });
+    page.drawText(pdfSafe(scanPdfTitolo()), { x: marginX, y, size:18, font: bold, color: black });
     drawRight(`Generato il ${new Date().toLocaleDateString('it-IT')}`, impRight, y+2, 9, font);
     y -= 22;
 
@@ -2823,12 +2844,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       y -= 14;
     });
 
-    const primaData = list.find(e=>e.data), ultimaData = [...list].reverse().find(e=>e.data);
-    if(primaData && ultimaData){
-      const fmtD = (s)=> `${s.slice(8,10)}/${s.slice(5,7)}/${s.slice(0,4)}`;
-      page.drawText(`Periodo: dal ${fmtD(primaData.data)} al ${fmtD(ultimaData.data)}`, { x: marginX, y, size:10, font, color: grey });
-      y -= 14;
-    }
     y -= 10;
     drawHeaderRow();
 
@@ -2888,7 +2903,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const bytes = await pdfDoc.save();
     const blob = bytesToBlob(bytes);
     btn.disabled = false;
-    replaceWithOpenLink(btn, blob, `riepilogo-corse-${dateKey(new Date())}.pdf`);
+    replaceWithOpenLink(btn, blob, scanPdfFilename());
   }
 
   function renderScansioni(container){
