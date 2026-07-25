@@ -261,16 +261,25 @@
     -webkit-appearance:none; margin:0;
   }
 
-  /* --- centratura campi orario inizio/fine turno --- */
-  .km-grid > .field input[type=time]{
+  /* --- centratura/uniformità campi data e ora affiancati (turno, scansione) --- */
+  .km-grid > .field input[type=time],
+  .km-grid > .field input[type=date]{
     text-align:center;
     -webkit-appearance:none; appearance:none;
+    box-sizing:border-box; min-height:44px; line-height:1.2;
+    display:flex; align-items:center; justify-content:center;
   }
-  .km-grid > .field input[type=time]::-webkit-date-and-time-value{ text-align:center; }
-  .km-grid > .field input[type=time]::-webkit-datetime-edit{ text-align:center; padding:0; }
-  .km-grid > .field input[type=time]::-webkit-datetime-edit-fields-wrapper{
+  .km-grid > .field input[type=time]::-webkit-date-and-time-value,
+  .km-grid > .field input[type=date]::-webkit-date-and-time-value{ text-align:center; margin:0; }
+  .km-grid > .field input[type=time]::-webkit-datetime-edit,
+  .km-grid > .field input[type=date]::-webkit-datetime-edit{ text-align:center; padding:0; }
+  .km-grid > .field input[type=time]::-webkit-datetime-edit-fields-wrapper,
+  .km-grid > .field input[type=date]::-webkit-datetime-edit-fields-wrapper{
     display:inline-flex; justify-content:center; width:100%;
   }
+  /* nasconde eventuali icone native che sbilanciano il riquadro */
+  .km-grid > .field input[type=time]::-webkit-calendar-picker-indicator,
+  .km-grid > .field input[type=date]::-webkit-calendar-picker-indicator{ margin:0; }
 
   .km-delta{text-align:center; margin-top:14px; padding-top:12px; border-top:1px dashed var(--border);}
   .km-delta .num{font-family:'JetBrains Mono', monospace; font-size:26px; color:var(--amber-ink); font-weight:500;}
