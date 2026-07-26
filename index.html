@@ -328,14 +328,16 @@
   .stat-box .val.green{color:var(--green);}
   .stat-box .val.red{color:var(--red);}
 
-  .breakdown-row{display:flex; align-items:center; gap:10px; margin-top:10px;}
-  .breakdown-row .lbl{width:118px; font-size:12px; color:var(--ink-muted); flex-shrink:0;}
-  .breakdown-row .bar-track{flex:1; height:8px; background:var(--surface-3); border-radius:5px; overflow:hidden;}
+  .breakdown-row{display:block; margin-top:14px;}
+  .breakdown-row .bd-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:5px;}
+  .breakdown-row .lbl{flex:1; min-width:0; font-size:12px; color:var(--ink-muted);}
+  .breakdown-row .bar-track{width:100%; height:8px; background:var(--surface-3); border-radius:5px; overflow:hidden;}
   .breakdown-row .bar-fill{height:100%; border-radius:5px;}
   .breakdown-row .bar-fill.posteggio{background:var(--amber);}
   .breakdown-row .bar-fill.radio{background:var(--blue);}
   .breakdown-row .bar-fill.prenotazione{background:var(--green);}
-  .breakdown-row .val{width:64px; text-align:right; font-family:'JetBrains Mono', monospace; font-size:12.5px; color:var(--ink-muted); flex-shrink:0;}
+  .breakdown-row .val{flex-shrink:0; white-space:nowrap; text-align:right; font-family:'JetBrains Mono', monospace; font-size:12.5px; color:var(--ink-muted);}
+  .breakdown-row .val .pct{color:var(--ink-faint); margin-right:2px;}
 
   .kv-row{display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px dashed var(--border); font-size:13px;}
   .kv-row:last-child{border-bottom:none;}
@@ -1198,22 +1200,22 @@
   // Riepilogo mensile sia nel riepilogo giornaliero della tab Corse.
   function renderTipologiaMetodoBreakdown(container, agg, periodLabel){
     const card2 = document.createElement('div'); card2.className='card'; card2.innerHTML = `<h2>Corse per tipologia · ${periodLabel}</h2>`;
-    const maxV = Math.max(1, agg.byTipo.posteggio, agg.byTipo.radio, agg.byTipo.prenotazione);
+    const totT = agg.byTipoCount.radio + agg.byTipoCount.posteggio + agg.byTipoCount.prenotazione;
     [['radio','Radio'],['posteggio','Posteggio'],['prenotazione','Prenotazione']].forEach(([k,label])=>{
       const row = document.createElement('div'); row.className='breakdown-row';
-      const pct = Math.round((agg.byTipo[k]/maxV)*100);
-      row.innerHTML = `<div class="lbl">${label} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${agg.byTipoCount[k]})</span></div><div class="bar-track"><div class="bar-fill ${k}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(agg.byTipo[k])} €</div>`;
+      const pct = totT>0 ? Math.round((agg.byTipoCount[k]/totT)*100) : 0;
+      row.innerHTML = `<div class="bd-head"><div class="lbl">${label} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${agg.byTipoCount[k]})</span></div><div class="val"><span class="pct">${pct}%</span> · ${fmtMoney(agg.byTipo[k])} €</div></div><div class="bar-track"><div class="bar-fill ${k}" style="width:${pct}%"></div></div>`;
       card2.appendChild(row);
     });
     container.appendChild(card2);
 
     const card3 = document.createElement('div'); card3.className='card'; card3.innerHTML = `<h2>Per metodo di pagamento · ${periodLabel}</h2>`;
-    const maxM = Math.max(1, ...METODI.map(mm=>agg.byMetodoEntrata[mm]));
+    const totM = METODI.reduce((s,mm)=> s + agg.byMetodoEntrataCount[mm], 0);
     METODI.forEach(mm=>{
       const row = document.createElement('div'); row.className='breakdown-row';
-      const pct = Math.round((agg.byMetodoEntrata[mm]/maxM)*100);
+      const pct = totM>0 ? Math.round((agg.byMetodoEntrataCount[mm]/totM)*100) : 0;
       const cls = mm==='carta'?'radio':(mm==='contanti'?'prenotazione':'posteggio');
-      row.innerHTML = `<div class="lbl">${METODO_LABEL[mm]} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${agg.byMetodoEntrataCount[mm]})</span></div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div><div class="val">${fmtMoney(agg.byMetodoEntrata[mm])} €</div>`;
+      row.innerHTML = `<div class="bd-head"><div class="lbl">${METODO_LABEL[mm]} <span style="color:var(--ink-faint); font-weight:400; font-size:0.75em;">(${agg.byMetodoEntrataCount[mm]})</span></div><div class="val"><span class="pct">${pct}%</span> · ${fmtMoney(agg.byMetodoEntrata[mm])} €</div></div><div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>`;
       card3.appendChild(row);
     });
     container.appendChild(card3);

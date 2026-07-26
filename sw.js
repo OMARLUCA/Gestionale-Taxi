@@ -1,7 +1,7 @@
 /* Gestionale Taxi — Service Worker
    Alza il numero di versione quando cambi index.html o gli asset,
    così il vecchio cache viene ripulito e i client prendono la nuova versione. */
-const VERSION = 'taxi31-v3';
+const VERSION = 'taxi31-v5';
 const SHELL_CACHE = 'shell-' + VERSION;
 const RUNTIME_CACHE = 'runtime-' + VERSION;
 
