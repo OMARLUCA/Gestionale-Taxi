@@ -8,7 +8,9 @@
 <meta name="apple-mobile-web-app-title" content="Gestionale Taxi">
 <meta name="theme-color" content="#F3EFE4">
 <title>Gestionale Taxi</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23D99A15'/%3E%3Ctext x='32' y='42' font-family='Arial' font-weight='700' font-size='26' fill='%2321252E' text-anchor='middle'%3E31%3C/text%3E%3C/svg%3E">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" type="image/png" href="./favicon-32.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -434,10 +436,6 @@
   .quick-add-row .save-btn{margin-top:0;}
   .save-btn:disabled{opacity:0.4;}
 
-  .btn-outline{width:100%; background:var(--surface); color:var(--ink); border:1px solid var(--border); font-family:'Oswald', sans-serif; font-size:13px; letter-spacing:0.04em; text-transform:uppercase; font-weight:600; padding:12px 0; border-radius:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;}
-  .btn-outline:active{background:var(--surface-3);}
-  .btn-outline .ico{font-size:15px;}
-  .backup-hint{font-size:12px; color:var(--ink-faint); line-height:1.5; margin:0 0 10px;}
   .settings-section{margin-bottom:20px;}
   .settings-section h4{font-family:'Oswald', sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-faint); margin:0 0 10px;}
   .method-toggle-row{display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--border);}
@@ -496,6 +494,7 @@
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -764,14 +763,10 @@
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
     </div>
 
-    <div class="settings-section">
-      <h4>Backup dati</h4>
-      <p class="backup-hint">Esporta tutti i tuoi dati in un file da conservare. Utile prima di reinstallare l'app o cambiare telefono. L'importazione sostituisce i dati attuali con quelli del file.</p>
-      <div style="display:flex; flex-direction:column; gap:10px;">
-        <button type="button" class="btn-outline" id="exportData"><span class="ico">⬇︎</span> Esporta dati</button>
-        <button type="button" class="btn-outline" id="importData"><span class="ico">⬆︎</span> Importa dati</button>
-      </div>
-      <input type="file" id="importFile" accept="application/json,.json" style="display:none">
+    <div class="settings-section" id="accountSection" style="display:none;">
+      <h4>Account</h4>
+      <div class="subnote" id="accountEmail" style="margin:0 0 12px;"></div>
+      <button class="save-btn" id="logoutBtn" style="background:var(--surface-2); color:var(--red); border:1px solid var(--red-line);">Esci dall'account</button>
     </div>
 
     <button class="save-btn" id="saveSettings">Salva impostazioni</button>
@@ -837,6 +832,45 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Login / sicurezza (attivo solo se Supabase è configurato) -->
+<div class="overlay" id="overlayLogin" style="align-items:center; z-index:60;">
+  <div class="sheet" style="border-radius:20px; max-width:420px; margin:0 auto;">
+    <div class="sheet-head"><h3 id="loginTitle">Accedi</h3></div>
+    <div class="subnote" id="loginIntro" style="font-size:12.5px; color:var(--ink-muted); margin:-6px 0 16px; line-height:1.5;">
+      Inserisci le tue credenziali per aprire il tuo registro. I dati restano separati per ogni account.
+    </div>
+    <div class="form-row"><label>Email</label><input type="email" id="loginEmail" autocomplete="username" placeholder="tua@email.it"></div>
+    <div class="form-row" id="loginPwRow"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••"></div>
+    <div id="loginError" style="display:none; color:var(--red); font-size:12.5px; margin:-4px 0 12px;"></div>
+    <div id="loginNote" style="display:none; color:var(--green); font-size:12.5px; margin:-4px 0 12px; line-height:1.5;"></div>
+    <button class="save-btn" id="loginBtn">Accedi</button>
+    <div id="loginForgotWrap" style="text-align:center; margin-top:12px; font-size:12.5px;">
+      <a href="#" id="loginForgot" style="color:var(--ink-muted); text-decoration:none;">Password dimenticata?</a>
+    </div>
+    <div id="loginToggleWrap" style="text-align:center; margin-top:10px; font-size:12.5px; color:var(--ink-muted);">
+      <span id="loginToggleText">Prima volta?</span>
+      <a href="#" id="loginToggle" style="color:var(--amber); text-decoration:none; font-weight:600;">Registrati</a>
+    </div>
+    <div id="loginBackWrap" style="display:none; text-align:center; margin-top:12px; font-size:12.5px;">
+      <a href="#" id="loginBack" style="color:var(--amber); text-decoration:none; font-weight:600;">Torna al login</a>
+    </div>
+  </div>
+</div>
+<div class="overlay" id="overlayNewPass" style="align-items:center; z-index:61;">
+  <div class="sheet" style="border-radius:20px; max-width:420px; margin:0 auto;">
+    <div class="sheet-head"><h3>Nuova password</h3></div>
+    <div class="subnote" style="font-size:12.5px; color:var(--ink-muted); margin:-6px 0 16px; line-height:1.5;">
+      Scegli una nuova password per il tuo account.
+    </div>
+    <div class="form-row"><label>Nuova password</label><input type="password" id="npPassword" autocomplete="new-password" placeholder="••••••••"></div>
+    <div class="form-row"><label>Ripeti password</label><input type="password" id="npPassword2" autocomplete="new-password" placeholder="••••••••"></div>
+    <div id="npError" style="display:none; color:var(--red); font-size:12.5px; margin:-4px 0 12px;"></div>
+    <div id="npNote" style="display:none; color:var(--green); font-size:12.5px; margin:-4px 0 12px;"></div>
+    <button class="save-btn" id="npBtn">Salva nuova password</button>
+  </div>
+</div>
+<div id="syncPill" style="display:none; position:fixed; left:50%; transform:translateX(-50%); bottom:calc(12px + var(--safe-bottom, 0px)); z-index:35; background:var(--surface); border:1px solid var(--border); color:var(--ink-muted); font-size:11.5px; padding:6px 12px; border-radius:999px; box-shadow:0 2px 10px rgba(30,26,10,0.12);"></div>
+
 <script>
 (function(){
   "use strict";
@@ -862,6 +896,253 @@
       }
     };
   }
+
+  // ===================== SUPABASE: backup, sync e login =====================
+  // ⬇️ INCOLLA QUI I DUE VALORI DEL TUO PROGETTO SUPABASE.
+  //    Li trovi in: Supabase → Project Settings → API.
+  //    Finché restano vuoti, l'app funziona come prima (solo locale, senza login).
+  const SUPABASE_URL      = 'https://euvyjrfwojckgqtvjcda.supabase.co';   // già inserito
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV1dnlqcmZ3b2pja2dxdHZqY2RhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUwNjkwMDgsImV4cCI6MjEwMDY0NTAwOH0.aRcPqN0vcMr82X2gaGFOYLHJaImoH9LY3ErxDOJU-8o';
+
+  const sb = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase)
+    ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+    : null;
+  function cloudOn(){ return !!sb; }
+
+  let currentUser = null;
+  let cloudTimer  = null;
+  let cloudBusy   = false;
+
+  function setPill(text, ok){
+    const p = document.getElementById('syncPill');
+    if(!p) return;
+    if(!text){ p.style.display='none'; return; }
+    p.textContent = text;
+    p.style.color = ok===false ? 'var(--red)' : 'var(--ink-muted)';
+    p.style.display = 'block';
+    if(ok){ clearTimeout(p._t); p._t = setTimeout(()=>{ p.style.display='none'; }, 2200); }
+  }
+
+  // Scarica la riga remota e la adotta SOLO se è più recente di quella locale.
+  async function cloudPull(){
+    if(!cloudOn() || !currentUser) return;
+    try{
+      setPill('Sincronizzo…');
+      const { data, error } = await sb
+        .from('registro').select('data, updated_at')
+        .eq('user_id', currentUser.id).maybeSingle();
+      if(error) throw error;
+      if(data && data.data){
+        const remote = data.data;
+        const remoteAt = remote.updatedAt || data.updated_at || '';
+        const localAt  = state.updatedAt || '';
+        if(remoteAt > localAt){
+          applyLoadedState(remote);
+          await window.storage.set('taxi31-log', JSON.stringify(state), false);
+          if(typeof renderMain==='function') renderMain();
+          setPill('Dati aggiornati dal cloud', true);
+          return;
+        }
+      }
+      // niente remoto o locale più recente → spingo su il locale
+      await cloudPush(true);
+    }catch(e){ console.error('cloudPull', e); setPill('Cloud non raggiungibile', false); }
+  }
+
+  function scheduleCloudPush(){
+    if(!cloudOn() || !currentUser) return;
+    clearTimeout(cloudTimer);
+    cloudTimer = setTimeout(()=>{ cloudPush(); }, 1500);
+  }
+
+  async function cloudPush(silent){
+    if(!cloudOn() || !currentUser || cloudBusy) return;
+    cloudBusy = true;
+    try{
+      if(!silent) setPill('Salvo nel cloud…');
+      const { error } = await sb.from('registro').upsert({
+        user_id: currentUser.id,
+        data: state,
+        updated_at: new Date().toISOString()
+      }, { onConflict:'user_id' });
+      if(error) throw error;
+      if(!silent) setPill('Salvato', true);
+    }catch(e){ console.error('cloudPush', e); setPill('Backup non riuscito', false); }
+    finally{ cloudBusy = false; }
+  }
+
+  // ---- UI login ----
+  let authMode = 'login';  // 'login' | 'signup' | 'reset'
+  const _bootUrlAuth = (window.location.hash || '') + '|' + (window.location.search || '');
+  function loginNote(msg){
+    const el = document.getElementById('loginNote');
+    if(!el) return;
+    if(!msg){ el.style.display='none'; return; }
+    el.textContent = msg; el.style.display='block';
+  }
+  function applyAuthMode(){
+    const titles = { login:'Accedi', signup:'Crea account', reset:'Recupera password' };
+    document.getElementById('loginTitle').textContent = titles[authMode];
+    document.getElementById('loginBtn').textContent =
+      authMode==='signup' ? 'Registrati' : (authMode==='reset' ? 'Invia link di recupero' : 'Accedi');
+    document.getElementById('loginPwRow').style.display      = authMode==='reset' ? 'none' : '';
+    document.getElementById('loginForgotWrap').style.display = authMode==='login' ? 'block' : 'none';
+    document.getElementById('loginToggleWrap').style.display = authMode==='reset' ? 'none' : 'block';
+    document.getElementById('loginBackWrap').style.display   = authMode==='reset' ? 'block' : 'none';
+    document.getElementById('loginToggleText').textContent   = authMode==='signup' ? 'Hai già un account?' : 'Prima volta?';
+    document.getElementById('loginToggle').textContent       = authMode==='signup' ? 'Accedi' : 'Registrati';
+    document.getElementById('loginIntro').textContent = authMode==='reset'
+      ? 'Inserisci la tua email: ti mandiamo un link per reimpostare la password. Aprilo da questo telefono.'
+      : 'Inserisci le tue credenziali per aprire il tuo registro. I dati restano separati per ogni account.';
+    loginError(''); loginNote('');
+  }
+  function showLogin(){
+    const ov = document.getElementById('overlayLogin');
+    if(ov) ov.classList.add('show');
+  }
+  function hideLogin(){
+    const ov = document.getElementById('overlayLogin');
+    if(ov) ov.classList.remove('show');
+  }
+  function loginError(msg){
+    const el = document.getElementById('loginError');
+    if(!el) return;
+    if(!msg){ el.style.display='none'; return; }
+    el.textContent = msg; el.style.display='block';
+  }
+  function wireLoginUI(){
+    const btn = document.getElementById('loginBtn');
+    const tog = document.getElementById('loginToggle');
+    if(tog) tog.addEventListener('click', (e)=>{
+      e.preventDefault();
+      authMode = (authMode==='signup') ? 'login' : 'signup';
+      applyAuthMode();
+    });
+    const forgot = document.getElementById('loginForgot');
+    if(forgot) forgot.addEventListener('click', (e)=>{ e.preventDefault(); authMode='reset'; applyAuthMode(); });
+    const back = document.getElementById('loginBack');
+    if(back) back.addEventListener('click', (e)=>{ e.preventDefault(); authMode='login'; applyAuthMode(); });
+    if(btn) btn.addEventListener('click', doAuth);
+    const em = document.getElementById('loginEmail');
+    const pw = document.getElementById('loginPassword');
+    if(pw) pw.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doAuth(); });
+    if(em) em.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && authMode==='reset') doAuth(); });
+    wireNewPassUI();
+    applyAuthMode();
+  }
+  function wireNewPassUI(){
+    const b = document.getElementById('npBtn');
+    if(b && !b._wired){ b._wired = true; b.addEventListener('click', doSetNewPassword); }
+  }
+  function showNewPass(){
+    hideLogin();
+    const ov = document.getElementById('overlayNewPass');
+    if(ov) ov.classList.add('show');
+  }
+  async function doSetNewPassword(){
+    const e1 = document.getElementById('npError'); const n1 = document.getElementById('npNote');
+    e1.style.display='none'; n1.style.display='none';
+    const p1 = document.getElementById('npPassword').value||'';
+    const p2 = document.getElementById('npPassword2').value||'';
+    if(p1.length < 6){ e1.textContent='La password deve avere almeno 6 caratteri.'; e1.style.display='block'; return; }
+    if(p1 !== p2){ e1.textContent='Le due password non coincidono.'; e1.style.display='block'; return; }
+    const b = document.getElementById('npBtn'); const o = b.textContent; b.disabled=true; b.textContent='…';
+    try{
+      const { error } = await sb.auth.updateUser({ password: p1 });
+      if(error) throw error;
+      n1.textContent = 'Password aggiornata. Riapro l\'app…'; n1.style.display='block';
+      setTimeout(()=>{ location.href = window.location.origin + window.location.pathname; }, 1200);
+    }catch(err){
+      e1.textContent = (err && err.message) ? err.message : 'Aggiornamento non riuscito. Il link potrebbe essere scaduto: richiedine uno nuovo.';
+      e1.style.display='block';
+      b.disabled=false; b.textContent=o;
+    }
+  }
+  async function doAuth(){
+    loginError(''); loginNote('');
+    const email = (document.getElementById('loginEmail').value||'').trim();
+    const pw    = document.getElementById('loginPassword').value||'';
+    if(!email){ loginError('Inserisci la email.'); return; }
+    if(authMode!=='reset' && !pw){ loginError('Inserisci la password.'); return; }
+    const btn = document.getElementById('loginBtn'); btn.disabled = true; btn.textContent = '…';
+    try{
+      if(authMode==='reset'){
+        const redirectTo = window.location.origin + window.location.pathname;
+        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo });
+        if(error) throw error;
+        loginNote('Ti abbiamo inviato una email con il link per reimpostare la password. Aprila da questo telefono.');
+        return;
+      }
+      let res;
+      if(authMode==='signup'){
+        res = await sb.auth.signUp({ email, password: pw });
+        if(res.error) throw res.error;
+        if(!res.data.session){ authMode='login'; applyAuthMode(); loginNote('Account creato. Se richiesto, conferma dalla mail, poi accedi.'); return; }
+      } else {
+        res = await sb.auth.signInWithPassword({ email, password: pw });
+        if(res.error) throw res.error;
+      }
+      currentUser = res.data.user || (res.data.session && res.data.session.user);
+      hideLogin();
+      await onAuthenticated();
+    }catch(e){
+      loginError(e && e.message ? e.message : 'Operazione non riuscita.');
+    }finally{
+      btn.disabled = false;
+      btn.textContent = authMode==='signup' ? 'Registrati' : (authMode==='reset' ? 'Invia link di recupero' : 'Accedi');
+    }
+  }
+  async function doLogout(){
+    try{ await sb.auth.signOut(); }catch(e){}
+    currentUser = null;
+    location.reload();
+  }
+  // Esposta per collegarla a un pulsante nelle Impostazioni, se vuoi.
+  window.taxiLogout = function(){ if(cloudOn()) doLogout(); };
+
+  async function onAuthenticated(){
+    await loadState();          // locale (istantaneo, funziona offline)
+    if(typeof renderMain==='function') renderMain();
+    cloudPull();                // in background: allinea col cloud
+  }
+
+  // Cancello di sicurezza + boot con Supabase. Ritorna true se ha gestito il boot.
+  async function authGate(){
+    if(!cloudOn()) return false;   // non configurato → boot normale
+    wireLoginUI();
+
+    // Eventi di autenticazione (incluso il recupero password)
+    sb.auth.onAuthStateChange((evt, session)=>{
+      if(evt === 'PASSWORD_RECOVERY'){ showNewPass(); return; }
+      currentUser = session ? session.user : null;
+    });
+
+    // Link di recupero aperto dalla mail: mostra "nuova password", non entrare nell'app
+    if(/type=recovery/.test(_bootUrlAuth)){
+      showNewPass();
+      return true;
+    }
+    if(/error=/.test(_bootUrlAuth)){
+      showLogin();
+      loginError('Link non valido o scaduto. Richiedi un nuovo link di recupero.');
+      return true;
+    }
+
+    try{
+      const { data } = await sb.auth.getSession(); // in cache: funziona anche offline
+      if(data && data.session){
+        currentUser = data.session.user;
+        await onAuthenticated();
+      } else {
+        showLogin();
+      }
+    }catch(e){
+      // se qualcosa va storto con l'auth, meglio chiedere il login che aprire tutto
+      showLogin();
+    }
+    return true;
+  }
+  // ===================== fine blocco Supabase =====================
 
   const MESI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
   const MESI_FULL = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
@@ -996,34 +1277,39 @@
     return typeof prev.kmFinale==='number' ? prev.kmFinale : null;
   }
 
+  function applyLoadedState(parsed){
+    state.days = parsed.days || {};
+    state.months = parsed.months || {};
+    state.years = parsed.years || {};
+    state.deadlines = parsed.deadlines || [];
+    state.reports = parsed.reports || [];
+    state.scansioni = parsed.scansioni || [];
+    state.updatedAt = parsed.updatedAt || null;
+    state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
+    state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
+    state.settings.registro = Object.assign({}, DEFAULT_SETTINGS.registro, (parsed.settings && parsed.settings.registro) || {});
+    state.settings.scanAnagrafica = Object.assign({}, DEFAULT_SETTINGS.scanAnagrafica, (parsed.settings && parsed.settings.scanAnagrafica) || {});
+    // Migrazione: Aggeggio ora è come i contanti (non tracciato). Applicata una sola volta.
+    if(!parsed.migratedAggeggio){
+      state.settings.tracciato.aggeggio = false;
+      state.migratedAggeggio = true;
+    } else {
+      state.migratedAggeggio = true;
+    }
+  }
   async function loadState(){
     try{
       const res = await window.storage.get('taxi31-log', false);
       if(res && res.value){
-        const parsed = JSON.parse(res.value);
-        state.days = parsed.days || {};
-        state.months = parsed.months || {};
-        state.years = parsed.years || {};
-        state.deadlines = parsed.deadlines || [];
-        state.reports = parsed.reports || [];
-        state.scansioni = parsed.scansioni || [];
-        state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
-        state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
-        state.settings.registro = Object.assign({}, DEFAULT_SETTINGS.registro, (parsed.settings && parsed.settings.registro) || {});
-        state.settings.scanAnagrafica = Object.assign({}, DEFAULT_SETTINGS.scanAnagrafica, (parsed.settings && parsed.settings.scanAnagrafica) || {});
-        // Migrazione: Aggeggio ora è come i contanti (non tracciato). Applicata una sola volta.
-        if(!parsed.migratedAggeggio){
-          state.settings.tracciato.aggeggio = false;
-          state.migratedAggeggio = true;
-        } else {
-          state.migratedAggeggio = true;
-        }
+        applyLoadedState(JSON.parse(res.value));
       }
     }catch(e){ /* no data yet */ }
   }
   async function saveState(){
+    state.updatedAt = new Date().toISOString();
     try{ await window.storage.set('taxi31-log', JSON.stringify(state), false); }
     catch(e){ showToast('Errore di salvataggio'); console.error(e); }
+    scheduleCloudPush();
   }
   function showToast(msg){
     const t = document.getElementById('toast');
@@ -4121,8 +4407,17 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('setScanSigla').value = state.settings.scanAnagrafica.sigla;
     document.getElementById('setScanSeriale').value = state.settings.scanAnagrafica.seriale;
     document.getElementById('setScanIban').value = state.settings.scanAnagrafica.iban;
+    const accSec = document.getElementById('accountSection');
+    if(cloudOn() && currentUser){
+      document.getElementById('accountEmail').textContent = 'Accesso come ' + (currentUser.email || '—');
+      accSec.style.display = '';
+    } else {
+      accSec.style.display = 'none';
+    }
     overlaySet.classList.add('show');
   }
+  const _logoutBtn = document.getElementById('logoutBtn');
+  if(_logoutBtn) _logoutBtn.addEventListener('click', ()=>{ if(window.taxiLogout) window.taxiLogout(); });
   document.getElementById('gearBtn').addEventListener('click', openSettingsSheet);
   document.getElementById('closeSheetSet').addEventListener('click', ()=>overlaySet.classList.remove('show'));
   overlaySet.addEventListener('click', (e)=>{ if(e.target===overlaySet) overlaySet.classList.remove('show'); });
@@ -4155,63 +4450,26 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     renderMain();
   });
 
-  // ---------- Backup: esporta / importa ----------
-  document.getElementById('exportData').addEventListener('click', ()=>{
-    try{
-      const data = JSON.stringify(state, null, 2);
-      const blob = new Blob([data], { type:'application/json' });
-      const url = URL.createObjectURL(blob);
-      const d = new Date();
-      const stamp = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `taxigest-backup-${stamp}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(()=> URL.revokeObjectURL(url), 1000);
-      showToast('Dati esportati');
-    }catch(e){ showToast('Errore nell\'esportazione'); console.error(e); }
-  });
-
-  document.getElementById('importData').addEventListener('click', ()=>{
-    document.getElementById('importFile').click();
-  });
-
-  document.getElementById('importFile').addEventListener('change', async (e)=>{
-    const file = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if(!file) return;
-    let parsed;
-    try{
-      const text = await file.text();
-      parsed = JSON.parse(text);
-    }catch(err){ showToast('File non valido'); return; }
-    if(!parsed || typeof parsed!=='object' || (!parsed.days && !parsed.months && !parsed.settings)){
-      showToast('Il file non contiene dati validi'); return;
-    }
-    const ok = await askConfirm(
-      'Importare i dati?',
-      'I dati attuali verranno sostituiti con quelli del file. L\'operazione non è reversibile: esporta prima un backup se vuoi conservarli.',
-      'Importa'
-    );
-    if(!ok) return;
-    try{
-      await window.storage.set('taxi31-log', JSON.stringify(parsed), false);
-      await loadState();
-      overlaySet.classList.remove('show');
-      renderMain();
-      showToast('Dati importati');
-    }catch(err){ showToast('Errore nell\'importazione'); console.error(err); }
-  });
-
   // ---------- Init ----------
   (async function init(){
-    await loadState();
-    renderMain();
+    const handled = await authGate();   // true se Supabase è configurato (gestisce login+sync)
+    if(!handled){                        // altrimenti: comportamento identico a prima
+      await loadState();
+      renderMain();
+    }
   })();
 
 })();
+</script>
+<script>
+  // Registrazione PWA (offline + installabile). Richiede HTTPS e file nella stessa cartella.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('./sw.js').catch(function(err){
+        console.warn('Service worker non registrato:', err);
+      });
+    });
+  }
 </script>
 </body>
 </html>
