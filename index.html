@@ -924,6 +924,7 @@
   }
 
   // Scarica la riga remota e la adotta SOLO se è più recente di quella locale.
+  function hasData(s){ return !!(s && s.days && Object.keys(s.days).length > 0); }
   async function cloudPull(){
     if(!cloudOn() || !currentUser) return;
     try{
@@ -932,19 +933,22 @@
         .from('registro').select('data, updated_at')
         .eq('user_id', currentUser.id).maybeSingle();
       if(error) throw error;
-      if(data && data.data){
-        const remote = data.data;
-        const remoteAt = remote.updatedAt || data.updated_at || '';
-        const localAt  = state.updatedAt || '';
-        if(remoteAt > localAt){
-          applyLoadedState(remote);
-          await window.storage.set('taxi31-log', JSON.stringify(state), false);
-          if(typeof renderMain==='function') renderMain();
-          setPill('Dati aggiornati dal cloud', true);
-          return;
-        }
+      const remote    = (data && data.data) ? data.data : null;
+      const remoteHas = hasData(remote);
+      const localHas  = hasData(state);
+      const remoteAt  = remote ? (remote.updatedAt || data.updated_at || '') : '';
+      const localAt   = state.updatedAt || '';
+
+      // REGOLA DI SICUREZZA: non sovrascrivere MAI dati locali con un cloud vuoto.
+      // Adotto il cloud solo se ha dati veri E (il locale è vuoto OPPURE il cloud è più recente).
+      if(remoteHas && (!localHas || remoteAt > localAt)){
+        applyLoadedState(remote);
+        await window.storage.set('taxi31-log', JSON.stringify(state), false);
+        if(typeof renderMain==='function') renderMain();
+        setPill('Dati aggiornati dal cloud', true);
+        return;
       }
-      // niente remoto o locale più recente → spingo su il locale
+      // Altrimenti vince il locale (o sono entrambi vuoti): salvo il locale nel cloud.
       await cloudPush(true);
     }catch(e){ console.error('cloudPull', e); setPill('Cloud non raggiungibile', false); }
   }
