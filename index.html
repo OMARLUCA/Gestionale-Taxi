@@ -841,6 +841,11 @@
     </div>
     <div class="form-row"><label>Email</label><input type="email" id="loginEmail" autocomplete="username" placeholder="tua@email.it"></div>
     <div class="form-row" id="loginPwRow"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" placeholder="••••••••"></div>
+    <div id="loginPwShowRow" style="margin:-6px 0 12px; font-size:12.5px;">
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; color:var(--ink-muted);">
+        <input type="checkbox" id="loginPwShow"> Mostra password
+      </label>
+    </div>
     <div id="loginError" style="display:none; color:var(--red); font-size:12.5px; margin:-4px 0 12px;"></div>
     <div id="loginNote" style="display:none; color:var(--green); font-size:12.5px; margin:-4px 0 12px; line-height:1.5;"></div>
     <button class="save-btn" id="loginBtn">Accedi</button>
@@ -864,6 +869,11 @@
     </div>
     <div class="form-row"><label>Nuova password</label><input type="password" id="npPassword" autocomplete="new-password" placeholder="••••••••"></div>
     <div class="form-row"><label>Ripeti password</label><input type="password" id="npPassword2" autocomplete="new-password" placeholder="••••••••"></div>
+    <div style="margin:-6px 0 12px; font-size:12.5px;">
+      <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; color:var(--ink-muted);">
+        <input type="checkbox" id="npPwShow"> Mostra password
+      </label>
+    </div>
     <div id="npError" style="display:none; color:var(--red); font-size:12.5px; margin:-4px 0 12px;"></div>
     <div id="npNote" style="display:none; color:var(--green); font-size:12.5px; margin:-4px 0 12px;"></div>
     <button class="save-btn" id="npBtn">Salva nuova password</button>
@@ -1027,6 +1037,11 @@
     const back = document.getElementById('loginBack');
     if(back) back.addEventListener('click', (e)=>{ e.preventDefault(); authMode='login'; applyAuthMode(); });
     if(btn) btn.addEventListener('click', doAuth);
+    const pwShow = document.getElementById('loginPwShow');
+    const pwInput = document.getElementById('loginPassword');
+    if(pwShow && pwInput) pwShow.addEventListener('change', ()=>{
+      pwInput.type = pwShow.checked ? 'text' : 'password';
+    });
     const em = document.getElementById('loginEmail');
     const pw = document.getElementById('loginPassword');
     if(pw) pw.addEventListener('keydown', (e)=>{ if(e.key==='Enter') doAuth(); });
@@ -1037,6 +1052,17 @@
   function wireNewPassUI(){
     const b = document.getElementById('npBtn');
     if(b && !b._wired){ b._wired = true; b.addEventListener('click', doSetNewPassword); }
+    const show = document.getElementById('npPwShow');
+    if(show && !show._wired){
+      show._wired = true;
+      show.addEventListener('change', ()=>{
+        const t = show.checked ? 'text' : 'password';
+        const a = document.getElementById('npPassword');
+        const c = document.getElementById('npPassword2');
+        if(a) a.type = t;
+        if(c) c.type = t;
+      });
+    }
   }
   function showNewPass(){
     hideLogin();
