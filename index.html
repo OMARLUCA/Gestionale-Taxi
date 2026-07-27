@@ -495,6 +495,7 @@
   .deadline-status{ font-size:13px !important; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -763,6 +764,26 @@
       <div class="form-row"><label>Sigla taxi</label><input type="text" id="setScanSigla"></div>
       <div class="form-row"><label>Seriale</label><input type="text" id="setScanSeriale"></div>
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Backup ed esportazione dati</h4>
+      <div class="subnote" style="margin-bottom:12px;">Esporta tutti i tuoi dati (giorni, corse, spese, scadenze, riepiloghi e impostazioni). Il backup completo serve per salvare tutto e poterlo reimportare; CSV ed Excel sono comodi per il commercialista o per aprirli su un foglio di calcolo.</div>
+      <div id="exportButtons">
+        <button class="save-btn" id="expBackup" style="margin-bottom:10px;">💾 Backup completo (.json)</button>
+        <button class="save-btn" id="expCsv" style="margin-bottom:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">📄 Movimenti (.csv)</button>
+        <button class="save-btn" id="expXlsx" style="margin-bottom:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">📊 Tutto in Excel (.xlsx)</button>
+        <button class="save-btn" id="expPdf" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">🧾 Movimenti in PDF</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Importa dati</h4>
+      <div class="subnote" style="margin-bottom:12px;">Importa un backup completo (.json) per ripristinare tutto, oppure un file di movimenti (.csv) per aggiungere le voci dei giorni. Il backup completo <strong>sostituisce</strong> i dati attuali; il CSV <strong>aggiunge</strong> le voci a quelle esistenti.</div>
+      <button class="save-btn" id="impBackupBtn" style="margin-bottom:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">⬆️ Importa backup (.json)</button>
+      <button class="save-btn" id="impCsvBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">⬆️ Importa movimenti (.csv)</button>
+      <input type="file" id="impBackupInput" accept=".json,application/json" style="display:none">
+      <input type="file" id="impCsvInput" accept=".csv,text/csv" style="display:none">
     </div>
 
     <div class="settings-section" id="accountSection" style="display:none;">
@@ -4481,6 +4502,311 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     showToast('Impostazioni salvate');
     renderMain();
   });
+
+  // ===================== Esportazione / Importazione dati =====================
+  const TIPOLOGIA_ENTRATA_LABEL = { posteggio:'Posteggio', radio:'Radio', prenotazione:'Prenotazione', altro:'Altro' };
+  function _dl(){ return dateKey(new Date()); }
+
+  // Su PWA standalone (iOS) un download programmatico spesso non parte: offriamo un vero
+  // link da toccare + un pulsante Salva/Condividi nativo, come per i PDF ufficiali.
+  function offerFile(blob, filename, mime, label){
+    let box = document.getElementById('exportResult');
+    if(!box){
+      box = document.createElement('div'); box.id='exportResult'; box.style.marginTop='12px';
+      const anchor = document.getElementById('exportButtons');
+      if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor.nextSibling);
+    }
+    box.innerHTML='';
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download=filename; a.target='_blank'; a.rel='noopener';
+    a.className='save-btn';
+    a.style.cssText='display:block; text-align:center; margin-bottom:8px; text-decoration:none;';
+    a.textContent = '⬇️ Tocca per scaricare ' + (label||filename);
+    const share = document.createElement('button');
+    share.className='save-btn';
+    share.style.cssText='display:block; width:100%; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);';
+    share.textContent='🔗 Salva o condividi';
+    share.addEventListener('click', async ()=>{
+      try{
+        const file = new File([blob], filename, { type: mime });
+        if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file] }); return; }
+        showToast('Condivisione non supportata qui: usa "Tocca per scaricare"');
+      }catch(e){ if(e && e.name==='AbortError') return; showToast('Condivisione non riuscita'); }
+    });
+    box.appendChild(a); box.appendChild(share);
+  }
+
+  // Tutte le voci (entrate + spese) di tutti i giorni, in ordine cronologico.
+  function movementRows(){
+    const rows = [];
+    for(const dk of Object.keys(state.days).sort()){
+      const day = state.days[dk];
+      if(!day || !day.entries) continue;
+      const sorted = [...day.entries].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+      for(const e of sorted){
+        const categoria = e.kind==='spesa'
+          ? (CATEGORIA_LABEL[spesaCategoria(e)] || 'Servizi vari')
+          : (TIPOLOGIA_ENTRATA_LABEL[e.tipo] || 'Altro');
+        rows.push({
+          data: dk, ora: e.time || '',
+          movimento: e.kind==='spesa' ? 'Spesa' : 'Entrata',
+          categoria, metodo: METODO_LABEL[e.metodo] || 'Contanti',
+          importo: e.importo || 0, nota: e.nota || '', id: e.id || ''
+        });
+      }
+    }
+    return rows;
+  }
+
+  // ---- CSV ----
+  function csvEscape(v){
+    const s = (v==null?'':String(v));
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }
+  function buildMovementsCsv(){
+    const head = ['Data','Ora','Movimento','Categoria','Metodo','Importo','Nota','ID'];
+    const lines = [head.join(';')];
+    for(const r of movementRows()){
+      lines.push([
+        csvEscape(r.data), csvEscape(r.ora), csvEscape(r.movimento),
+        csvEscape(r.categoria), csvEscape(r.metodo),
+        csvEscape((r.importo||0).toFixed(2).replace('.', ',')),
+        csvEscape(r.nota), csvEscape(r.id)
+      ].join(';'));
+    }
+    return '\uFEFF' + lines.join('\r\n'); // BOM: accenti corretti in Excel
+  }
+
+  document.getElementById('expBackup').addEventListener('click', ()=>{
+    try{
+      offerFile(new Blob([JSON.stringify(state, null, 2)], {type:'application/json'}),
+        `taxi31-backup-${_dl()}.json`, 'application/json', 'il backup');
+      showToast('Backup pronto');
+    }catch(e){ console.error(e); showToast('Errore durante il backup'); }
+  });
+
+  document.getElementById('expCsv').addEventListener('click', ()=>{
+    try{
+      offerFile(new Blob([buildMovementsCsv()], {type:'text/csv'}),
+        `taxi31-movimenti-${_dl()}.csv`, 'text/csv', 'il CSV');
+      showToast('CSV pronto');
+    }catch(e){ console.error(e); showToast('Errore durante l\'esportazione CSV'); }
+  });
+
+  // ---- Excel (più fogli) ----
+  document.getElementById('expXlsx').addEventListener('click', ()=>{
+    if(!window.XLSX){ showToast('Libreria Excel non caricata, controlla la connessione'); return; }
+    try{
+      const wb = XLSX.utils.book_new();
+      const mov = movementRows().map(r=>({
+        Data:r.data, Ora:r.ora, Movimento:r.movimento, Categoria:r.categoria,
+        Metodo:r.metodo, Importo:r.importo, Nota:r.nota
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+        mov.length ? mov : [{Data:'',Ora:'',Movimento:'',Categoria:'',Metodo:'',Importo:'',Nota:''}]
+      ), 'Movimenti');
+
+      const giorni = Object.keys(state.days).sort().map(dk=>{
+        const d = state.days[dk];
+        const inc = (d.entries||[]).filter(e=>e.kind!=='spesa').reduce((s,e)=>s+(e.importo||0),0);
+        const out = (d.entries||[]).filter(e=>e.kind==='spesa').reduce((s,e)=>s+(e.importo||0),0);
+        return { Data:dk, InizioTurno:d.shiftStart||'', FineTurno:d.shiftEnd||'',
+          PausaMin:d.pausedMinutes||0, KmInizio:d.kmStart==null?'':d.kmStart, KmFine:d.kmEnd==null?'':d.kmEnd,
+          Entrate:inc, Spese:out, Motivo:d.giornoMotivo||'' };
+      });
+      if(giorni.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(giorni), 'Giorni');
+
+      const scan = (state.scansioni||[]).map(s=>({ ID:s.id||'', Data:s.data||'', Ora:s.ora||'', Da:s.da||'', A:s.a||'', Prezzo:s.prezzo||'', Metodo:s.metodo||'' }));
+      if(scan.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scan), 'Corse scansionate');
+
+      const dls = (state.deadlines||[]).map(x=>({ Titolo:x.titolo||'', Categoria:x.categoria||'', Scadenza:x.scadenza||'', Nota:x.nota||'' }));
+      if(dls.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dls), 'Scadenze');
+
+      const rep = (state.reports||[]).map(x=>({ Nome:x.nome||'', Periodo:x.periodoLabel||'', Generato:x.generatedAt||'' }));
+      if(rep.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rep), 'Riepiloghi');
+
+      const outBuf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+      offerFile(new Blob([outBuf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
+        `taxi31-dati-${_dl()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'il file Excel');
+      showToast('Excel pronto');
+    }catch(e){ console.error(e); showToast('Errore durante l\'esportazione Excel'); }
+  });
+
+  // ---- PDF di tutti i movimenti ----
+  async function buildMovimentiPdf(){
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const black = rgb(0.1,0.1,0.12), line = rgb(0.8,0.8,0.82), grey = rgb(0.5,0.5,0.55);
+    const W=595.28, H=841.89, marginX=40, impRight=W-marginX;
+    let page, y;
+    function pdfSafe(s){ return (s==null?'':String(s)).replace(/[^\x00-\xFF]/g,'?'); }
+    function fit(s,maxw,size,f){ f=f||font; s=pdfSafe(s); while(s.length>1 && f.widthOfTextAtSize(s,size)>maxw) s=s.slice(0,-1); return s; }
+    function drawRight(txt,xr,yy,size,f){ f=f||font; const w=f.widthOfTextAtSize(txt,size); page.drawText(txt,{x:xr-w,y:yy,size,font:f,color:black}); }
+    const colX = { data:marginX, ora:marginX+64, mov:marginX+104, cat:marginX+156, met:marginX+300 };
+    function tableHead(){
+      page.drawText('Data',{x:colX.data,y,size:8,font:bold,color:black});
+      page.drawText('Ora',{x:colX.ora,y,size:8,font:bold,color:black});
+      page.drawText('Tipo',{x:colX.mov,y,size:8,font:bold,color:black});
+      page.drawText('Categoria',{x:colX.cat,y,size:8,font:bold,color:black});
+      page.drawText('Metodo',{x:colX.met,y,size:8,font:bold,color:black});
+      drawRight('Importo', impRight, y, 8, bold);
+      y-=6; page.drawLine({start:{x:marginX,y},end:{x:W-marginX,y},thickness:0.5,color:black}); y-=12;
+    }
+    function newPage(){
+      page=pdfDoc.addPage([W,H]); y=H-50;
+      page.drawText('Movimenti · TAXI31',{x:marginX,y,size:14,font:bold,color:black});
+      page.drawText('Esportato il '+_dl(),{x:marginX,y:y-12,size:8,font,color:grey}); y-=32;
+      tableHead();
+    }
+    newPage();
+    let totIn=0, totOut=0;
+    for(const r of movementRows()){
+      if(y<60) newPage();
+      const df = r.data ? `${r.data.slice(8,10)}/${r.data.slice(5,7)}/${r.data.slice(2,4)}` : '';
+      page.drawText(df,{x:colX.data,y,size:8,font,color:black});
+      page.drawText(pdfSafe(r.ora),{x:colX.ora,y,size:8,font,color:black});
+      page.drawText(r.movimento,{x:colX.mov,y,size:8,font,color:black});
+      page.drawText(fit(r.categoria,138,8),{x:colX.cat,y,size:8,font,color:black});
+      page.drawText(fit(r.metodo,120,8),{x:colX.met,y,size:8,font,color:black});
+      drawRight((r.movimento==='Spesa'?'-':'')+fmtMoney(r.importo)+' €', impRight, y, 8, font);
+      if(r.movimento==='Spesa') totOut+=r.importo; else totIn+=r.importo;
+      y-=6; page.drawLine({start:{x:marginX,y},end:{x:W-marginX,y},thickness:0.3,color:line}); y-=10;
+    }
+    if(y<100) newPage();
+    y-=8; page.drawLine({start:{x:marginX,y},end:{x:W-marginX,y},thickness:1,color:black}); y-=18;
+    page.drawText('Totale entrate',{x:marginX,y,size:10,font:bold,color:black}); drawRight(fmtMoney(totIn)+' €',impRight,y,10,bold); y-=16;
+    page.drawText('Totale spese',{x:marginX,y,size:10,font:bold,color:black}); drawRight('-'+fmtMoney(totOut)+' €',impRight,y,10,bold); y-=16;
+    page.drawText('Saldo',{x:marginX,y,size:11,font:bold,color:black}); drawRight(fmtMoney(totIn-totOut)+' €',impRight,y,11,bold);
+    return pdfDoc;
+  }
+
+  document.getElementById('expPdf').addEventListener('click', async function(){
+    if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
+    try{
+      showToast('Genero il PDF…');
+      const doc = await buildMovimentiPdf();
+      const bytes = await doc.save();
+      offerFile(new Blob([bytes], {type:'application/pdf'}), `taxi31-movimenti-${_dl()}.pdf`, 'application/pdf', 'il PDF');
+    }catch(e){ console.error(e); showToast('Errore durante il PDF'); }
+  });
+
+  // ---- Import backup completo (.json) ----
+  document.getElementById('impBackupBtn').addEventListener('click', ()=> document.getElementById('impBackupInput').click());
+  document.getElementById('impBackupInput').addEventListener('change', async (ev)=>{
+    const file = ev.target.files && ev.target.files[0]; ev.target.value='';
+    if(!file) return;
+    let parsed;
+    try{ parsed = JSON.parse(await file.text()); }
+    catch(e){ showToast('File non valido: non è un backup JSON'); return; }
+    if(!parsed || typeof parsed!=='object' || (!parsed.days && !parsed.settings)){ showToast('Questo file non sembra un backup valido'); return; }
+    const ok = await askConfirm('Importare il backup?',
+      'Tutti i dati attuali (giorni, corse, spese, scadenze, riepiloghi) verranno SOSTITUITI con quelli del file. Procedere?', 'Importa');
+    if(!ok) return;
+    try{
+      applyLoadedState(parsed);
+      await saveState();
+      renderMain();
+      overlaySet.classList.remove('show');
+      showToast('Backup importato');
+    }catch(e){ console.error(e); showToast('Errore durante l\'importazione'); }
+  });
+
+  // ---- Import movimenti (.csv) ----
+  const _revMetodo={}; Object.keys(METODO_LABEL).forEach(k=> _revMetodo[METODO_LABEL[k].toLowerCase()]=k);
+  const _revEntrata={}; Object.keys(TIPOLOGIA_ENTRATA_LABEL).forEach(k=> _revEntrata[TIPOLOGIA_ENTRATA_LABEL[k].toLowerCase()]=k);
+  const _revSpesa={}; Object.keys(CATEGORIA_LABEL).forEach(k=> _revSpesa[CATEGORIA_LABEL[k].toLowerCase()]=k);
+
+  function parseCsv(text){
+    if(text.charCodeAt(0)===0xFEFF) text = text.slice(1);
+    const first = text.split(/\r?\n/)[0]||'';
+    const sep = (first.split(';').length >= first.split(',').length) ? ';' : ',';
+    const rows=[]; let row=[], cur='', q=false;
+    for(let i=0;i<text.length;i++){
+      const c=text[i];
+      if(q){ if(c==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; }
+      else {
+        if(c==='"') q=true;
+        else if(c===sep){ row.push(cur); cur=''; }
+        else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; }
+        else if(c==='\r'){ /* ignora */ }
+        else cur+=c;
+      }
+    }
+    if(cur.length || row.length){ row.push(cur); rows.push(row); }
+    return rows.filter(r=> r.some(x=> (x||'').trim()!==''));
+  }
+  function parseImporto(v){
+    if(v==null) return NaN;
+    let s = String(v).trim().replace(/[€\s]/g,'');
+    if(s==='') return NaN;
+    const hasComma=s.indexOf(',')>=0, hasDot=s.indexOf('.')>=0;
+    if(hasComma && hasDot) s = s.replace(/\./g,'').replace(',', '.');
+    else if(hasComma) s = s.replace(',', '.');
+    return parseFloat(s);
+  }
+
+  document.getElementById('impCsvBtn').addEventListener('click', ()=> document.getElementById('impCsvInput').click());
+  document.getElementById('impCsvInput').addEventListener('change', async (ev)=>{
+    const file = ev.target.files && ev.target.files[0]; ev.target.value='';
+    if(!file) return;
+    let text; try{ text = await file.text(); }catch(e){ showToast('Impossibile leggere il file'); return; }
+    const rows = parseCsv(text);
+    if(rows.length < 2){ showToast('CSV vuoto o senza righe di dati'); return; }
+    const header = rows[0].map(h=> (h||'').trim().toLowerCase());
+    const idx = (names)=>{ for(const n of names){ const i=header.indexOf(n); if(i>=0) return i; } return -1; };
+    const iData=idx(['data']), iOra=idx(['ora']), iMov=idx(['movimento','tipo']),
+      iCat=idx(['categoria','tipologia/categoria','tipologia']), iMet=idx(['metodo']),
+      iImp=idx(['importo']), iNota=idx(['nota','note']), iId=idx(['id']);
+    if(iData<0 || iImp<0){ showToast('Nel CSV servono almeno le colonne "Data" e "Importo"'); return; }
+
+    const existingIds = new Set();
+    Object.values(state.days).forEach(d=> (d.entries||[]).forEach(e=> e.id && existingIds.add(e.id)));
+
+    const staged=[]; let skipped=0;
+    for(let r=1;r<rows.length;r++){
+      const row = rows[r];
+      const rawData = (row[iData]||'').trim();
+      if(!rawData){ skipped++; continue; }
+      let dk = rawData;
+      const m = rawData.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+      if(m){ let yy=m[3]; if(yy.length===2) yy='20'+yy; dk=`${yy}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(dk)){ skipped++; continue; }
+      const imp = parseImporto(row[iImp]);
+      if(!(imp>0)){ skipped++; continue; }
+      const gid = iId>=0 ? (row[iId]||'').trim() : '';
+      if(gid && existingIds.has(gid)){ skipped++; continue; }
+      const movRaw = (iMov>=0?(row[iMov]||''):'entrata').trim().toLowerCase();
+      const isSpesa = movRaw.startsWith('spes') || movRaw==='uscita' || movRaw==='out';
+      const catRaw = (iCat>=0?(row[iCat]||''):'').trim().toLowerCase();
+      const metRaw = (iMet>=0?(row[iMet]||''):'').trim().toLowerCase();
+      const metodo = _revMetodo[metRaw] || (METODI.includes(metRaw)?metRaw:'contanti');
+      const ora = iOra>=0?(row[iOra]||'').trim():'';
+      const nota = iNota>=0?(row[iNota]||'').trim():'';
+      let payload;
+      if(isSpesa){
+        const sub = _revSpesa[catRaw] || (CATEGORIA_LABEL[catRaw]?catRaw:'servizi_vari');
+        payload = { kind:'spesa', tipo:'spesa', sottocategoria:sub, metodo, importo:imp, time:ora, nota };
+      } else {
+        const tp = _revEntrata[catRaw] || (TIPOLOGIA_ENTRATA_LABEL[catRaw]?catRaw:'altro');
+        payload = { kind:'entrata', tipo:tp, sottocategoria:null, metodo, importo:imp, time:ora, nota };
+      }
+      staged.push({ dk, entry: Object.assign({ id: gid || uid() }, payload) });
+      if(gid) existingIds.add(gid);
+    }
+    if(!staged.length){ showToast('Nessuna voce valida da importare (controlla il formato)'); return; }
+    const ok = await askConfirm('Importare '+staged.length+' voci?',
+      staged.length+' voci verranno AGGIUNTE ai giorni corrispondenti'+(skipped?(' ('+skipped+' righe ignorate)'):'')+'. Procedere?', 'Importa');
+    if(!ok) return;
+    for(const s of staged){ ensureDay(s.dk).entries.push(s.entry); }
+    await saveState();
+    renderMain();
+    overlaySet.classList.remove('show');
+    showToast(staged.length+' voci importate');
+  });
+
 
   // ---------- Init ----------
   (async function init(){
