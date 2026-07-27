@@ -493,9 +493,25 @@
   .sheet-head h3{ font-size:19px !important; }
   .empty-state{ font-size:16px !important; }
   .deadline-status{ font-size:13px !important; }
+
+  /* ---- Eventi ---- */
+  .ev-card .ev-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+  .ev-title{font-family:'Oswald',sans-serif;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--amber-ink);}
+  .ev-import-btn{background:var(--amber-soft);border:1px solid var(--amber-line);color:var(--amber-ink);border-radius:8px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Oswald',sans-serif;letter-spacing:0.04em;}
+  .ev-list{display:flex;flex-direction:column;gap:9px;}
+  .ev-item{border-left:3px solid var(--amber-line);padding:1px 0 1px 10px;}
+  .ev-nome{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3;}
+  .ev-meta{font-size:12px;color:var(--ink-muted);margin-top:2px;}
+  .ev-empty{font-size:12.5px;color:var(--ink-faint);}
+  .ev-hint{font-size:12.5px;color:var(--ink-muted);margin:0 0 14px;line-height:1.55;}
+  .ev-file{display:flex;align-items:center;justify-content:center;border:1px dashed var(--amber-line);background:var(--amber-soft);border-radius:12px;padding:15px;cursor:pointer;color:var(--amber-ink);font-weight:600;font-size:13px;margin-bottom:12px;}
+  .ev-file input{display:none;}
+  .ev-status{font-size:12.5px;color:var(--ink-muted);margin-bottom:10px;min-height:18px;}
+  .ev-preview{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;margin-bottom:12px;}
+  .ev-prev-item{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;}
+  .ev-confirm{width:100%;padding:13px;border:none;border-radius:12px;background:var(--green);color:#fff;font-family:'Oswald',sans-serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -764,26 +780,6 @@
       <div class="form-row"><label>Sigla taxi</label><input type="text" id="setScanSigla"></div>
       <div class="form-row"><label>Seriale</label><input type="text" id="setScanSeriale"></div>
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
-    </div>
-
-    <div class="settings-section">
-      <h4>Backup ed esportazione dati</h4>
-      <div class="subnote" style="margin-bottom:12px;">Esporta tutti i tuoi dati (giorni, corse, spese, scadenze, riepiloghi e impostazioni). Il backup completo serve per salvare tutto e poterlo reimportare; CSV ed Excel sono comodi per il commercialista o per aprirli su un foglio di calcolo.</div>
-      <div id="exportButtons">
-        <button class="save-btn" id="expBackup" style="margin-bottom:10px;">💾 Backup completo (.json)</button>
-        <button class="save-btn" id="expCsv" style="margin-bottom:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">📄 Movimenti (.csv)</button>
-        <button class="save-btn" id="expXlsx" style="margin-bottom:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">📊 Tutto in Excel (.xlsx)</button>
-        <button class="save-btn" id="expPdf" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">🧾 Movimenti in PDF</button>
-      </div>
-    </div>
-
-    <div class="settings-section">
-      <h4>Importa dati</h4>
-      <div class="subnote" style="margin-bottom:12px;">Importa un backup completo (.json) per ripristinare tutto, oppure un file di movimenti (.csv) per aggiungere le voci dei giorni. Il backup completo <strong>sostituisce</strong> i dati attuali; il CSV <strong>aggiunge</strong> le voci a quelle esistenti.</div>
-      <button class="save-btn" id="impBackupBtn" style="margin-bottom:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">⬆️ Importa backup (.json)</button>
-      <button class="save-btn" id="impCsvBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">⬆️ Importa movimenti (.csv)</button>
-      <input type="file" id="impBackupInput" accept=".json,application/json" style="display:none">
-      <input type="file" id="impCsvInput" accept=".csv,text/csv" style="display:none">
     </div>
 
     <div class="settings-section" id="accountSection" style="display:none;">
@@ -1296,7 +1292,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -1337,6 +1333,7 @@
     state.deadlines = parsed.deadlines || [];
     state.reports = parsed.reports || [];
     state.scansioni = parsed.scansioni || [];
+    state.eventi = parsed.eventi || {};
     state.updatedAt = parsed.updatedAt || null;
     state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
     state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
@@ -4082,6 +4079,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(activeTab==='oggi'){
       renderScadenzeAlert(main);
       renderShiftCapsule(main, dayKey, day, isToday);
+      renderBachecaEventi(main, dayKey);
       renderQuickAddRow(main, dayKey);
       renderEntriesCard(main, dayKey, day, false);
       renderHourlyProductivityCard(main);
@@ -4503,310 +4501,218 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     renderMain();
   });
 
-  // ===================== Esportazione / Importazione dati =====================
-  const TIPOLOGIA_ENTRATA_LABEL = { posteggio:'Posteggio', radio:'Radio', prenotazione:'Prenotazione', altro:'Altro' };
-  function _dl(){ return dateKey(new Date()); }
+  // ================= EVENTI (bacheca + import PDF calendario Fiera Milano) =================
+  const EV_MESI={gennaio:1,febbraio:2,marzo:3,aprile:4,maggio:5,giugno:6,luglio:7,agosto:8,settembre:9,ottobre:10,novembre:11,dicembre:12};
+  const EV_ABBR=['','gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
+  const EV_TAIL=['ingress','pad','porta','level','gate','via','allianz','punto','largo','rho ','mix ','sede','inizio','orario','ore ','consultare','in fase'];
+  const EV_MONTHRE=/gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre/i;
+  const evPad=n=>String(n).padStart(2,'0');
+  const evEsc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  function evFmt(k){const[y,m,d]=k.split('-');return parseInt(d,10)+' '+EV_ABBR[parseInt(m,10)];}
 
-  // Su PWA standalone (iOS) un download programmatico spesso non parte: offriamo un vero
-  // link da toccare + un pulsante Salva/Condividi nativo, come per i PDF ufficiali.
-  function offerFile(blob, filename, mime, label){
-    let box = document.getElementById('exportResult');
-    if(!box){
-      box = document.createElement('div'); box.id='exportResult'; box.style.marginTop='12px';
-      const anchor = document.getElementById('exportButtons');
-      if(anchor && anchor.parentNode) anchor.parentNode.insertBefore(box, anchor.nextSibling);
-    }
-    box.innerHTML='';
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href=url; a.download=filename; a.target='_blank'; a.rel='noopener';
-    a.className='save-btn';
-    a.style.cssText='display:block; text-align:center; margin-bottom:8px; text-decoration:none;';
-    a.textContent = '⬇️ Tocca per scaricare ' + (label||filename);
-    const share = document.createElement('button');
-    share.className='save-btn';
-    share.style.cssText='display:block; width:100%; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);';
-    share.textContent='🔗 Salva o condividi';
-    share.addEventListener('click', async ()=>{
-      try{
-        const file = new File([blob], filename, { type: mime });
-        if(navigator.canShare && navigator.canShare({ files:[file] })){ await navigator.share({ files:[file] }); return; }
-        showToast('Condivisione non supportata qui: usa "Tocca per scaricare"');
-      }catch(e){ if(e && e.name==='AbortError') return; showToast('Condivisione non riuscita'); }
+  function evPrimaryMonthYear(filename){
+    let mm=null,yy=null;
+    const mNum=filename.match(/^\s*(\d{1,2})[_\-\s]/); if(mNum) mm=parseInt(mNum[1],10);
+    const yNum=filename.match(/(20\d{2})/); if(yNum) yy=parseInt(yNum[1],10);
+    if(!mm){for(const k in EV_MESI){if(filename.toLowerCase().includes(k)){mm=EV_MESI[k];break;}}}
+    return {pm:mm,year:yy};
+  }
+  function evToRows(tokens){
+    const byY={};
+    tokens.forEach(t=>{const k=Math.round(t.y/3);(byY[k]=byY[k]||[]).push(t);});
+    return Object.keys(byY).map(Number).sort((a,b)=>a-b).map(k=>{
+      const ts=byY[k].sort((a,b)=>a.x-b.x);
+      const col=(lo,hi)=>ts.filter(t=>t.x>=lo&&t.x<hi).map(t=>t.s).join(' ').replace(/\s+/g,' ').trim();
+      return {y:k*3, data:col(0,140), body:col(140,402), orar:col(402,9999)};
     });
-    box.appendChild(a); box.appendChild(share);
   }
-
-  // Tutte le voci (entrate + spese) di tutti i giorni, in ordine cronologico.
-  function movementRows(){
-    const rows = [];
-    for(const dk of Object.keys(state.days).sort()){
-      const day = state.days[dk];
-      if(!day || !day.entries) continue;
-      const sorted = [...day.entries].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
-      for(const e of sorted){
-        const categoria = e.kind==='spesa'
-          ? (CATEGORIA_LABEL[spesaCategoria(e)] || 'Servizi vari')
-          : (TIPOLOGIA_ENTRATA_LABEL[e.tipo] || 'Altro');
-        rows.push({
-          data: dk, ora: e.time || '',
-          movimento: e.kind==='spesa' ? 'Spesa' : 'Entrata',
-          categoria, metodo: METODO_LABEL[e.metodo] || 'Contanti',
-          importo: e.importo || 0, nota: e.nota || '', id: e.id || ''
-        });
+  const evIsTail=b=>{const s=b.toLowerCase();return EV_TAIL.some(t=>s.startsWith(t));};
+  const evIsLabel=d=>/preregistr|^evento:/i.test(d);
+  const evHasDay=d=>(/\d/.test(d)||EV_MONTHRE.test(d))&&!evIsLabel(d);
+  function evParseGiorni(txt,pm,year){
+    txt=txt.replace(/[\u2013\u2014]/g,'-').replace(/1\u00b0/g,'1').toLowerCase();
+    const monthAt=[];
+    for(const name in EV_MESI){let i=txt.indexOf(name);while(i>=0){monthAt.push({idx:i,month:EV_MESI[name]});i=txt.indexOf(name,i+1);}}
+    monthAt.sort((a,b)=>a.idx-b.idx);
+    const monthForPos=pos=>{for(const m of monthAt){if(m.idx>=pos)return m.month;}return monthAt.length?monthAt[monthAt.length-1].month:pm;};
+    const nums=[];const re=/\d{1,2}/g;let m;while((m=re.exec(txt))){nums.push({n:parseInt(m[0],10),pos:m.index});}
+    if(!nums.length)return[];
+    const dm=nums.map(x=>({day:x.n,month:monthForPos(x.pos)}));
+    const yearFor=mo=>{
+      if(pm==null||year==null)return year||new Date().getFullYear();
+      if(mo===pm)return year;
+      if(mo===(pm%12)+1)return pm===12?year+1:year;
+      if(mo===((pm+10)%12)+1)return pm===1?year-1:year;
+      return year;
+    };
+    let giorni=[];
+    if(dm.length===2){
+      const a=dm[0],b=dm[1];
+      let cur=new Date(yearFor(a.month),a.month-1,a.day);
+      const end=new Date(yearFor(b.month),b.month-1,b.day);
+      let g=0;while(cur<=end&&g++<400){giorni.push(cur.getFullYear()+'-'+evPad(cur.getMonth()+1)+'-'+evPad(cur.getDate()));cur.setDate(cur.getDate()+1);}
+    } else {
+      dm.forEach(d=>giorni.push(yearFor(d.month)+'-'+evPad(d.month)+'-'+evPad(d.day)));
+    }
+    return [...new Set(giorni)].sort();
+  }
+  const evCleanNome=s=>s.replace(/^([A-Z])\s(?=[A-Z])/,'$1').replace(/\s+\d{1,2}$/,'').replace(/\s+/g,' ').trim();
+  const evCleanLuogo=s=>s.replace(/^sede:?\s*/i,'').replace(/\s+/g,' ').trim();
+  function evParseEventi(tokens,filename){
+    const {pm,year}=evPrimaryMonthYear(filename);
+    const rows=evToRows(tokens);
+    const sedeIdx=rows.map((r,i)=>/^sede/i.test(r.body)?i:-1).filter(i=>i>=0);
+    if(!sedeIdx.length)return[];
+    const titleIdx=[];let searchFrom=0;
+    for(let k=0;k<sedeIdx.length;k++){
+      let ti=-1;
+      for(let i=searchFrom;i<=sedeIdx[k];i++){
+        if(rows[i].body&&!evIsTail(rows[i].body)&&/[A-Za-z]{3,}/.test(rows[i].body)){ti=i;break;}
       }
+      if(ti<0)ti=searchFrom;
+      titleIdx.push(ti);searchFrom=sedeIdx[k]+1;
     }
-    return rows;
+    const eventi=titleIdx.map((ti,k)=>{
+      const to=(k+1<titleIdx.length)?titleIdx[k+1]:rows.length;
+      const slice=rows.slice(ti,to);
+      const sedeRow=slice.find(r=>/^sede/i.test(r.body));
+      let orario='';const oJoin=slice.map(r=>r.orar).filter(Boolean).join(' ');let mo;
+      if((mo=oJoin.match(/ore\s*\d{1,2}[:.]\d{2}/i)))orario=mo[0].replace('.',':');
+      else if((mo=oJoin.match(/\d{1,2}[:.]\d{2}\s*[-\u2013]\s*\d{1,2}[:.]\d{2}/)))orario=mo[0].replace('.',':');
+      else if(/definizione/i.test(oJoin))orario='orario da definire';
+      else if(/consultare/i.test(oJoin))orario='vedi sito ufficiale';
+      return {nome:evCleanNome(rows[ti].body),luogo:sedeRow?evCleanLuogo(sedeRow.body):'',orario,y:rows[ti].y,giorni:[]};
+    });
+    const dateRows=rows.filter(r=>evHasDay(r.data));
+    const buckets={};
+    dateRows.forEach(r=>{let best=0,bd=1e9;eventi.forEach((e,i)=>{const d=Math.abs(e.y-r.y);if(d<bd){bd=d;best=i;}});(buckets[best]=buckets[best]||[]).push(r.data);});
+    eventi.forEach((e,i)=>{e.giorni=evParseGiorni((buckets[i]||[]).join(' '),pm,year);});
+    return eventi.filter(e=>e.giorni.length).map(e=>({start:e.giorni[0],end:e.giorni[e.giorni.length-1],giorni:e.giorni,nome:e.nome,luogo:e.luogo,orario:e.orario}));
   }
 
-  // ---- CSV ----
-  function csvEscape(v){
-    const s = (v==null?'':String(v));
-    return /[";\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  // ---- pdf.js lazy load ----
+  let evPdfLibLoading=null;
+  function evLoadPdfLib(){
+    if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if(evPdfLibLoading) return evPdfLibLoading;
+    evPdfLibLoading=new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload=()=>{try{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}catch(e){}res(window.pdfjsLib);};
+      s.onerror=()=>rej(new Error('pdfjs load failed'));
+      document.head.appendChild(s);
+    });
+    return evPdfLibLoading;
   }
-  function buildMovementsCsv(){
-    const head = ['Data','Ora','Movimento','Categoria','Metodo','Importo','Nota','ID'];
-    const lines = [head.join(';')];
-    for(const r of movementRows()){
-      lines.push([
-        csvEscape(r.data), csvEscape(r.ora), csvEscape(r.movimento),
-        csvEscape(r.categoria), csvEscape(r.metodo),
-        csvEscape((r.importo||0).toFixed(2).replace('.', ',')),
-        csvEscape(r.nota), csvEscape(r.id)
-      ].join(';'));
-    }
-    return '\uFEFF' + lines.join('\r\n'); // BOM: accenti corretti in Excel
-  }
-
-  document.getElementById('expBackup').addEventListener('click', ()=>{
-    try{
-      offerFile(new Blob([JSON.stringify(state, null, 2)], {type:'application/json'}),
-        `taxi31-backup-${_dl()}.json`, 'application/json', 'il backup');
-      showToast('Backup pronto');
-    }catch(e){ console.error(e); showToast('Errore durante il backup'); }
-  });
-
-  document.getElementById('expCsv').addEventListener('click', ()=>{
-    try{
-      offerFile(new Blob([buildMovementsCsv()], {type:'text/csv'}),
-        `taxi31-movimenti-${_dl()}.csv`, 'text/csv', 'il CSV');
-      showToast('CSV pronto');
-    }catch(e){ console.error(e); showToast('Errore durante l\'esportazione CSV'); }
-  });
-
-  // ---- Excel (più fogli) ----
-  document.getElementById('expXlsx').addEventListener('click', ()=>{
-    if(!window.XLSX){ showToast('Libreria Excel non caricata, controlla la connessione'); return; }
-    try{
-      const wb = XLSX.utils.book_new();
-      const mov = movementRows().map(r=>({
-        Data:r.data, Ora:r.ora, Movimento:r.movimento, Categoria:r.categoria,
-        Metodo:r.metodo, Importo:r.importo, Nota:r.nota
-      }));
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-        mov.length ? mov : [{Data:'',Ora:'',Movimento:'',Categoria:'',Metodo:'',Importo:'',Nota:''}]
-      ), 'Movimenti');
-
-      const giorni = Object.keys(state.days).sort().map(dk=>{
-        const d = state.days[dk];
-        const inc = (d.entries||[]).filter(e=>e.kind!=='spesa').reduce((s,e)=>s+(e.importo||0),0);
-        const out = (d.entries||[]).filter(e=>e.kind==='spesa').reduce((s,e)=>s+(e.importo||0),0);
-        return { Data:dk, InizioTurno:d.shiftStart||'', FineTurno:d.shiftEnd||'',
-          PausaMin:d.pausedMinutes||0, KmInizio:d.kmStart==null?'':d.kmStart, KmFine:d.kmEnd==null?'':d.kmEnd,
-          Entrate:inc, Spese:out, Motivo:d.giornoMotivo||'' };
+  async function evExtractTokens(file){
+    const lib=await evLoadPdfLib();
+    const buf=await file.arrayBuffer();
+    const pdf=await lib.getDocument({data:buf}).promise;
+    const toks=[];
+    for(let p=1;p<=pdf.numPages;p++){
+      const page=await pdf.getPage(p);
+      const vp=page.getViewport({scale:1});
+      const tc=await page.getTextContent();
+      tc.items.forEach(it=>{
+        if(!it.str||!it.str.trim())return;
+        toks.push({s:it.str.trim(),x:it.transform[4],y:(p-1)*10000+(vp.height-it.transform[5])});
       });
-      if(giorni.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(giorni), 'Giorni');
-
-      const scan = (state.scansioni||[]).map(s=>({ ID:s.id||'', Data:s.data||'', Ora:s.ora||'', Da:s.da||'', A:s.a||'', Prezzo:s.prezzo||'', Metodo:s.metodo||'' }));
-      if(scan.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scan), 'Corse scansionate');
-
-      const dls = (state.deadlines||[]).map(x=>({ Titolo:x.titolo||'', Categoria:x.categoria||'', Scadenza:x.scadenza||'', Nota:x.nota||'' }));
-      if(dls.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(dls), 'Scadenze');
-
-      const rep = (state.reports||[]).map(x=>({ Nome:x.nome||'', Periodo:x.periodoLabel||'', Generato:x.generatedAt||'' }));
-      if(rep.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rep), 'Riepiloghi');
-
-      const outBuf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
-      offerFile(new Blob([outBuf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}),
-        `taxi31-dati-${_dl()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'il file Excel');
-      showToast('Excel pronto');
-    }catch(e){ console.error(e); showToast('Errore durante l\'esportazione Excel'); }
-  });
-
-  // ---- PDF di tutti i movimenti ----
-  async function buildMovimentiPdf(){
-    const { PDFDocument, StandardFonts, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-    const black = rgb(0.1,0.1,0.12), line = rgb(0.8,0.8,0.82), grey = rgb(0.5,0.5,0.55);
-    const W=595.28, H=841.89, marginX=40, impRight=W-marginX;
-    let page, y;
-    function pdfSafe(s){ return (s==null?'':String(s)).replace(/[^\x00-\xFF]/g,'?'); }
-    function fit(s,maxw,size,f){ f=f||font; s=pdfSafe(s); while(s.length>1 && f.widthOfTextAtSize(s,size)>maxw) s=s.slice(0,-1); return s; }
-    function drawRight(txt,xr,yy,size,f){ f=f||font; const w=f.widthOfTextAtSize(txt,size); page.drawText(txt,{x:xr-w,y:yy,size,font:f,color:black}); }
-    const colX = { data:marginX, ora:marginX+64, mov:marginX+104, cat:marginX+156, met:marginX+300 };
-    function tableHead(){
-      page.drawText('Data',{x:colX.data,y,size:8,font:bold,color:black});
-      page.drawText('Ora',{x:colX.ora,y,size:8,font:bold,color:black});
-      page.drawText('Tipo',{x:colX.mov,y,size:8,font:bold,color:black});
-      page.drawText('Categoria',{x:colX.cat,y,size:8,font:bold,color:black});
-      page.drawText('Metodo',{x:colX.met,y,size:8,font:bold,color:black});
-      drawRight('Importo', impRight, y, 8, bold);
-      y-=6; page.drawLine({start:{x:marginX,y},end:{x:W-marginX,y},thickness:0.5,color:black}); y-=12;
     }
-    function newPage(){
-      page=pdfDoc.addPage([W,H]); y=H-50;
-      page.drawText('Movimenti · TAXI31',{x:marginX,y,size:14,font:bold,color:black});
-      page.drawText('Esportato il '+_dl(),{x:marginX,y:y-12,size:8,font,color:grey}); y-=32;
-      tableHead();
-    }
-    newPage();
-    let totIn=0, totOut=0;
-    for(const r of movementRows()){
-      if(y<60) newPage();
-      const df = r.data ? `${r.data.slice(8,10)}/${r.data.slice(5,7)}/${r.data.slice(2,4)}` : '';
-      page.drawText(df,{x:colX.data,y,size:8,font,color:black});
-      page.drawText(pdfSafe(r.ora),{x:colX.ora,y,size:8,font,color:black});
-      page.drawText(r.movimento,{x:colX.mov,y,size:8,font,color:black});
-      page.drawText(fit(r.categoria,138,8),{x:colX.cat,y,size:8,font,color:black});
-      page.drawText(fit(r.metodo,120,8),{x:colX.met,y,size:8,font,color:black});
-      drawRight((r.movimento==='Spesa'?'-':'')+fmtMoney(r.importo)+' €', impRight, y, 8, font);
-      if(r.movimento==='Spesa') totOut+=r.importo; else totIn+=r.importo;
-      y-=6; page.drawLine({start:{x:marginX,y},end:{x:W-marginX,y},thickness:0.3,color:line}); y-=10;
-    }
-    if(y<100) newPage();
-    y-=8; page.drawLine({start:{x:marginX,y},end:{x:W-marginX,y},thickness:1,color:black}); y-=18;
-    page.drawText('Totale entrate',{x:marginX,y,size:10,font:bold,color:black}); drawRight(fmtMoney(totIn)+' €',impRight,y,10,bold); y-=16;
-    page.drawText('Totale spese',{x:marginX,y,size:10,font:bold,color:black}); drawRight('-'+fmtMoney(totOut)+' €',impRight,y,10,bold); y-=16;
-    page.drawText('Saldo',{x:marginX,y,size:11,font:bold,color:black}); drawRight(fmtMoney(totIn-totOut)+' €',impRight,y,11,bold);
-    return pdfDoc;
+    return toks;
   }
 
-  document.getElementById('expPdf').addEventListener('click', async function(){
-    if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
+  // ---- bacheca in tab Oggi ----
+  function renderBachecaEventi(container,dayKey){
+    const arr=(state.eventi&&state.eventi[dayKey])||[];
+    const card=document.createElement('div');card.className='card ev-card';
+    const head=document.createElement('div');head.className='ev-head';
+    head.innerHTML='<span class="ev-title">Eventi in citt\u00e0</span>';
+    const btn=document.createElement('button');btn.className='ev-import-btn';btn.textContent='\uff0b PDF';
+    btn.addEventListener('click',openEventiSheet);head.appendChild(btn);card.appendChild(head);
+    if(arr.length){
+      const list=document.createElement('div');list.className='ev-list';
+      arr.slice().sort((a,b)=>(a.orario||'').localeCompare(b.orario||'')).forEach(e=>{
+        const row=document.createElement('div');row.className='ev-item';
+        const meta=[e.luogo,e.orario].filter(Boolean).map(evEsc).join(' \u00b7 ');
+        row.innerHTML='<div class="ev-nome">'+evEsc(e.nome)+'</div>'+(meta?'<div class="ev-meta">'+meta+'</div>':'');
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+    } else {
+      const empty=document.createElement('div');empty.className='ev-empty';
+      empty.textContent='Nessun evento per questo giorno';card.appendChild(empty);
+    }
+    container.appendChild(card);
+  }
+
+  // ---- import sheet ----
+  let evParsed=null,evFileName='';
+  function openEventiSheet(){
+    let ov=document.getElementById('overlayEventi');
+    if(!ov){
+      ov=document.createElement('div');ov.className='overlay';ov.id='overlayEventi';
+      ov.innerHTML='<div class="sheet"><div class="sheet-head"><h3>Importa eventi da PDF</h3><button id="evClose">\u2715</button></div>'+
+        '<p class="ev-hint">Carica il PDF mensile del calendario. L\'app legge date, nome e luogo e riempie la bacheca giorno per giorno. Controlla l\'anteprima e conferma. Il primo caricamento richiede una connessione a internet.</p>'+
+        '<label class="ev-file"><input type="file" id="evFile" accept="application/pdf"><span>Scegli il PDF\u2026</span></label>'+
+        '<div id="evStatus" class="ev-status"></div><div id="evPreview" class="ev-preview"></div>'+
+        '<button id="evConfirm" class="ev-confirm" style="display:none">Conferma e salva</button></div>';
+      document.body.appendChild(ov);
+      ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('show');});
+      ov.querySelector('#evClose').addEventListener('click',()=>ov.classList.remove('show'));
+      ov.querySelector('#evFile').addEventListener('change',evOnFile);
+      ov.querySelector('#evConfirm').addEventListener('click',async()=>{
+        if(!evParsed||!evParsed.length)return;
+        evSaveImported(evParsed,evFileName);
+        await saveState();
+        ov.classList.remove('show');
+        showToast('Eventi importati');
+        renderMain();
+      });
+    }
+    ov.querySelector('#evStatus').textContent='';
+    ov.querySelector('#evPreview').innerHTML='';
+    ov.querySelector('#evConfirm').style.display='none';
+    ov.querySelector('#evFile').value='';
+    ov.querySelector('.ev-file span').textContent='Scegli il PDF\u2026';
+    evParsed=null;
+    ov.classList.add('show');
+  }
+  async function evOnFile(e){
+    const file=e.target.files&&e.target.files[0];if(!file)return;
+    evFileName=file.name;
+    const ov=document.getElementById('overlayEventi');
+    ov.querySelector('.ev-file span').textContent=file.name;
+    const st=ov.querySelector('#evStatus');st.textContent='Leggo il PDF\u2026';
+    ov.querySelector('#evPreview').innerHTML='';ov.querySelector('#evConfirm').style.display='none';
     try{
-      showToast('Genero il PDF…');
-      const doc = await buildMovimentiPdf();
-      const bytes = await doc.save();
-      offerFile(new Blob([bytes], {type:'application/pdf'}), `taxi31-movimenti-${_dl()}.pdf`, 'application/pdf', 'il PDF');
-    }catch(e){ console.error(e); showToast('Errore durante il PDF'); }
-  });
-
-  // ---- Import backup completo (.json) ----
-  document.getElementById('impBackupBtn').addEventListener('click', ()=> document.getElementById('impBackupInput').click());
-  document.getElementById('impBackupInput').addEventListener('change', async (ev)=>{
-    const file = ev.target.files && ev.target.files[0]; ev.target.value='';
-    if(!file) return;
-    let parsed;
-    try{ parsed = JSON.parse(await file.text()); }
-    catch(e){ showToast('File non valido: non è un backup JSON'); return; }
-    if(!parsed || typeof parsed!=='object' || (!parsed.days && !parsed.settings)){ showToast('Questo file non sembra un backup valido'); return; }
-    const ok = await askConfirm('Importare il backup?',
-      'Tutti i dati attuali (giorni, corse, spese, scadenze, riepiloghi) verranno SOSTITUITI con quelli del file. Procedere?', 'Importa');
-    if(!ok) return;
-    try{
-      applyLoadedState(parsed);
-      await saveState();
-      renderMain();
-      overlaySet.classList.remove('show');
-      showToast('Backup importato');
-    }catch(e){ console.error(e); showToast('Errore durante l\'importazione'); }
-  });
-
-  // ---- Import movimenti (.csv) ----
-  const _revMetodo={}; Object.keys(METODO_LABEL).forEach(k=> _revMetodo[METODO_LABEL[k].toLowerCase()]=k);
-  const _revEntrata={}; Object.keys(TIPOLOGIA_ENTRATA_LABEL).forEach(k=> _revEntrata[TIPOLOGIA_ENTRATA_LABEL[k].toLowerCase()]=k);
-  const _revSpesa={}; Object.keys(CATEGORIA_LABEL).forEach(k=> _revSpesa[CATEGORIA_LABEL[k].toLowerCase()]=k);
-
-  function parseCsv(text){
-    if(text.charCodeAt(0)===0xFEFF) text = text.slice(1);
-    const first = text.split(/\r?\n/)[0]||'';
-    const sep = (first.split(';').length >= first.split(',').length) ? ';' : ',';
-    const rows=[]; let row=[], cur='', q=false;
-    for(let i=0;i<text.length;i++){
-      const c=text[i];
-      if(q){ if(c==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; }
-      else {
-        if(c==='"') q=true;
-        else if(c===sep){ row.push(cur); cur=''; }
-        else if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; }
-        else if(c==='\r'){ /* ignora */ }
-        else cur+=c;
-      }
-    }
-    if(cur.length || row.length){ row.push(cur); rows.push(row); }
-    return rows.filter(r=> r.some(x=> (x||'').trim()!==''));
+      const toks=await evExtractTokens(file);
+      if(!toks.length){st.textContent='Il PDF non contiene testo estraibile (forse \u00e8 una scansione).';return;}
+      evParsed=evParseEventi(toks,file.name);
+      if(!evParsed.length){st.textContent='Non ho trovato eventi riconoscibili in questo PDF.';return;}
+      const days=new Set();evParsed.forEach(ev=>ev.giorni.forEach(g=>days.add(g)));
+      st.textContent='Trovati '+evParsed.length+' eventi su '+days.size+' giorni.';
+      evRenderPreview(evParsed);
+      ov.querySelector('#evConfirm').style.display='block';
+    }catch(err){console.error(err);st.textContent='Errore nella lettura del PDF. Per il primo caricamento serve connessione a internet.';}
   }
-  function parseImporto(v){
-    if(v==null) return NaN;
-    let s = String(v).trim().replace(/[€\s]/g,'');
-    if(s==='') return NaN;
-    const hasComma=s.indexOf(',')>=0, hasDot=s.indexOf('.')>=0;
-    if(hasComma && hasDot) s = s.replace(/\./g,'').replace(',', '.');
-    else if(hasComma) s = s.replace(',', '.');
-    return parseFloat(s);
+  function evRenderPreview(events){
+    const wrap=document.getElementById('evPreview');wrap.innerHTML='';
+    events.forEach(ev=>{
+      const d=document.createElement('div');d.className='ev-prev-item';
+      const range=ev.start===ev.end?evFmt(ev.start):evFmt(ev.start)+' \u2013 '+evFmt(ev.end);
+      const meta=[range,ev.luogo,ev.orario].filter(Boolean).map(evEsc).join(' \u00b7 ');
+      d.innerHTML='<div class="ev-nome">'+evEsc(ev.nome)+'</div><div class="ev-meta">'+meta+'</div>';
+      wrap.appendChild(d);
+    });
   }
-
-  document.getElementById('impCsvBtn').addEventListener('click', ()=> document.getElementById('impCsvInput').click());
-  document.getElementById('impCsvInput').addEventListener('change', async (ev)=>{
-    const file = ev.target.files && ev.target.files[0]; ev.target.value='';
-    if(!file) return;
-    let text; try{ text = await file.text(); }catch(e){ showToast('Impossibile leggere il file'); return; }
-    const rows = parseCsv(text);
-    if(rows.length < 2){ showToast('CSV vuoto o senza righe di dati'); return; }
-    const header = rows[0].map(h=> (h||'').trim().toLowerCase());
-    const idx = (names)=>{ for(const n of names){ const i=header.indexOf(n); if(i>=0) return i; } return -1; };
-    const iData=idx(['data']), iOra=idx(['ora']), iMov=idx(['movimento','tipo']),
-      iCat=idx(['categoria','tipologia/categoria','tipologia']), iMet=idx(['metodo']),
-      iImp=idx(['importo']), iNota=idx(['nota','note']), iId=idx(['id']);
-    if(iData<0 || iImp<0){ showToast('Nel CSV servono almeno le colonne "Data" e "Importo"'); return; }
-
-    const existingIds = new Set();
-    Object.values(state.days).forEach(d=> (d.entries||[]).forEach(e=> e.id && existingIds.add(e.id)));
-
-    const staged=[]; let skipped=0;
-    for(let r=1;r<rows.length;r++){
-      const row = rows[r];
-      const rawData = (row[iData]||'').trim();
-      if(!rawData){ skipped++; continue; }
-      let dk = rawData;
-      const m = rawData.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-      if(m){ let yy=m[3]; if(yy.length===2) yy='20'+yy; dk=`${yy}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`; }
-      if(!/^\d{4}-\d{2}-\d{2}$/.test(dk)){ skipped++; continue; }
-      const imp = parseImporto(row[iImp]);
-      if(!(imp>0)){ skipped++; continue; }
-      const gid = iId>=0 ? (row[iId]||'').trim() : '';
-      if(gid && existingIds.has(gid)){ skipped++; continue; }
-      const movRaw = (iMov>=0?(row[iMov]||''):'entrata').trim().toLowerCase();
-      const isSpesa = movRaw.startsWith('spes') || movRaw==='uscita' || movRaw==='out';
-      const catRaw = (iCat>=0?(row[iCat]||''):'').trim().toLowerCase();
-      const metRaw = (iMet>=0?(row[iMet]||''):'').trim().toLowerCase();
-      const metodo = _revMetodo[metRaw] || (METODI.includes(metRaw)?metRaw:'contanti');
-      const ora = iOra>=0?(row[iOra]||'').trim():'';
-      const nota = iNota>=0?(row[iNota]||'').trim():'';
-      let payload;
-      if(isSpesa){
-        const sub = _revSpesa[catRaw] || (CATEGORIA_LABEL[catRaw]?catRaw:'servizi_vari');
-        payload = { kind:'spesa', tipo:'spesa', sottocategoria:sub, metodo, importo:imp, time:ora, nota };
-      } else {
-        const tp = _revEntrata[catRaw] || (TIPOLOGIA_ENTRATA_LABEL[catRaw]?catRaw:'altro');
-        payload = { kind:'entrata', tipo:tp, sottocategoria:null, metodo, importo:imp, time:ora, nota };
-      }
-      staged.push({ dk, entry: Object.assign({ id: gid || uid() }, payload) });
-      if(gid) existingIds.add(gid);
-    }
-    if(!staged.length){ showToast('Nessuna voce valida da importare (controlla il formato)'); return; }
-    const ok = await askConfirm('Importare '+staged.length+' voci?',
-      staged.length+' voci verranno AGGIUNTE ai giorni corrispondenti'+(skipped?(' ('+skipped+' righe ignorate)'):'')+'. Procedere?', 'Importa');
-    if(!ok) return;
-    for(const s of staged){ ensureDay(s.dk).entries.push(s.entry); }
-    await saveState();
-    renderMain();
-    overlaySet.classList.remove('show');
-    showToast(staged.length+' voci importate');
-  });
-
+  function evSaveImported(events,filename){
+    if(!state.eventi)state.eventi={};
+    const prefixes=new Set();
+    events.forEach(e=>e.giorni.forEach(g=>prefixes.add(g.slice(0,7))));
+    Object.keys(state.eventi).forEach(k=>{if(prefixes.has(k.slice(0,7)))delete state.eventi[k];});
+    events.forEach(e=>e.giorni.forEach(g=>{(state.eventi[g]=state.eventi[g]||[]).push({nome:e.nome,luogo:e.luogo,orario:e.orario});}));
+  }
+  // ================= /EVENTI =================
 
   // ---------- Init ----------
   (async function init(){
