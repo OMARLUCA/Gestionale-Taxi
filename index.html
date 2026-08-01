@@ -591,7 +591,7 @@
       <div class="chip" data-metodo="app">App</div>
       <div class="chip" data-metodo="globix">Globix</div>
       <div class="chip" data-metodo="centrale">Importo centrale</div>
-      <div class="chip" data-metodo="aggeggio">Aggeggio</div>
+      <div class="chip" data-metodo="aggeggio">MyPos</div>
       <div class="chip" data-metodo="buoni">Buoni</div>
       <div class="chip" data-metodo="satispay">Satispay</div>
     </div>
@@ -1220,7 +1220,7 @@
     });
     container.appendChild(card3);
   }
-  const METODO_LABEL = { carta:'Carta', contanti:'Contanti', app:'App', globix:'Globix', centrale:'Importo centrale', aggeggio:'Aggeggio', buoni:'Buoni', satispay:'Satispay' };
+  const METODO_LABEL = { carta:'Carta', contanti:'Contanti', app:'App', globix:'Globix', centrale:'Importo centrale', aggeggio:'MyPos', buoni:'Buoni', satispay:'Satispay' };
 
   function pad(n){ return String(n).padStart(2,'0'); }
   function dateKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -1963,8 +1963,9 @@
     const dayAgg = aggregateDayEntries(entries);
 
     const corseEntries = entries.filter(e=>e.kind==='entrata');
-    const elettroniciEntries = corseEntries.filter(e=>METODI_ELETTRONICI.includes(e.metodo));
-    const contantiEntries = corseEntries.filter(e=>e.metodo==='contanti');
+    const tracc = state.settings.tracciato || {};
+    const elettroniciEntries = corseEntries.filter(e=>tracc[e.metodo]===true);
+    const contantiEntries = corseEntries.filter(e=>tracc[e.metodo]!==true);
     const elettroniciTot = elettroniciEntries.reduce((s,e)=>s+e.importo,0);
     const contantiTot = contantiEntries.reduce((s,e)=>s+e.importo,0);
     const sumCard = document.createElement('div'); sumCard.className='card'; sumCard.innerHTML = `<h2>Riepilogo giornata</h2>`;
@@ -1977,7 +1978,9 @@
       <div class="stat"><span class="k">Pag. contanti (${contantiEntries.length})</span><span class="v">${fmtMoney(contantiTot)} €</span></div>`;
     sumCard.appendChild(rec2);
     const note = document.createElement('div'); note.className='subnote'; note.style.marginTop='8px';
-    note.textContent = 'Elettronici = carta, globix, importo centrale, buoni, app. Aggeggio e Satispay non rientrano in questo totale.';
+    const traccLabels = METODI.filter(m=>tracc[m]===true).map(m=>METODO_LABEL[m]||m);
+    const contLabels = METODI.filter(m=>tracc[m]!==true).map(m=>METODO_LABEL[m]||m);
+    note.textContent = `Elettronici = ${traccLabels.join(', ')||'nessuno'}. Contanti = ${contLabels.join(', ')||'nessuno'}. Modificabile in Impostazioni.`;
     sumCard.appendChild(note);
     container.appendChild(sumCard);
     renderTipologiaMetodoBreakdown(container, dayAgg, 'oggi');
