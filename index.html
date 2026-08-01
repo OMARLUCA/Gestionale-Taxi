@@ -766,6 +766,26 @@
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
     </div>
 
+    <div class="settings-section" id="backupSection">
+      <h4>Backup dati</h4>
+      <div class="subnote" style="margin-bottom:10px;">Esporta tutti i dati del gestionale o importali da un file. Il JSON è il backup completo; il CSV contiene le corse e le spese.</div>
+      <div id="backupBtns">
+        <button class="save-btn" id="exportJsonBtn" style="margin-bottom:8px;">⬇️ Esporta tutto (JSON)</button>
+        <button class="save-btn" id="importJsonBtn" style="margin-bottom:14px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">⬆️ Importa da JSON</button>
+        <div class="form-row" style="margin-bottom:8px;"><label>Movimenti da esportare in CSV</label>
+          <select id="csvScopeSelect">
+            <option value="tutto">Tutte le corse e spese</option>
+            <option value="anno">Solo l'anno selezionato</option>
+            <option value="mese">Solo il mese visualizzato</option>
+          </select>
+        </div>
+        <button class="save-btn" id="exportCsvBtn" style="margin-bottom:8px;">⬇️ Esporta corse/spese (CSV)</button>
+        <button class="save-btn" id="importCsvBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">⬆️ Importa corse/spese da CSV</button>
+      </div>
+      <input type="file" id="importJsonInput" accept=".json,application/json" style="display:none;">
+      <input type="file" id="importCsvInput" accept=".csv,text/csv" style="display:none;">
+    </div>
+
     <div class="settings-section" id="accountSection" style="display:none;">
       <h4>Account</h4>
       <div class="subnote" id="accountEmail" style="margin:0 0 12px;"></div>
@@ -2388,6 +2408,42 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     }
 
     return pdfDoc;
+  }
+
+  // Versione generica del pattern iOS-safe (link reale + condivisione nativa) per file non-PDF.
+  let backupTempBlocks = [];
+  function clearBackupTempBlocks(){ backupTempBlocks.forEach(b=>{ try{ b.remove(); }catch(e){} }); backupTempBlocks = []; }
+  function offerFileDownload(afterEl, blob, filename, mime, labelOpen){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.className = 'save-btn';
+    a.style.cssText = 'display:block; text-align:center; margin-bottom:8px;';
+    a.href = url; a.download = filename; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = labelOpen || '⬇️ Tocca qui per scaricare il file';
+
+    const shareBtn = document.createElement('button');
+    shareBtn.className = 'save-btn';
+    shareBtn.style.cssText = 'display:block; width:100%; margin-bottom:8px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);';
+    shareBtn.textContent = '🔗 Salva o condividi';
+    shareBtn.addEventListener('click', async ()=>{
+      try{
+        const file = new File([blob], filename, { type: mime });
+        if(navigator.canShare && navigator.canShare({ files: [file] })){
+          await navigator.share({ files: [file] });
+          return;
+        }
+        showToast('Condivisione non supportata: usa "Tocca qui per scaricare"');
+      }catch(e){
+        if(e && e.name === 'AbortError') return;
+        showToast('Condivisione non riuscita: usa "Tocca qui per scaricare"');
+      }
+    });
+
+    const wrap = document.createElement('div');
+    wrap.appendChild(a);
+    wrap.appendChild(shareBtn);
+    afterEl.insertAdjacentElement('afterend', wrap);
+    backupTempBlocks.push(wrap);
   }
 
   function bytesToBlob(bytes){
@@ -4457,9 +4513,178 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
   const _logoutBtn = document.getElementById('logoutBtn');
   if(_logoutBtn) _logoutBtn.addEventListener('click', ()=>{ if(window.taxiLogout) window.taxiLogout(); });
+
+  // ===================== Backup dati: export / import JSON e CSV =====================
+  const TIPO_EXPORT = { radio:'Radio', posteggio:'Posteggio', prenotazione:'Prenotazione', spesa:'Spesa' };
+  function csvEscape(v){
+    const s = (v==null?'':String(v));
+    return (s.includes(';')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }
+  // Raccoglie tutti i movimenti (entrate+spese) come righe piatte, filtrando per scopo.
+  function collectMovements(scope){
+    const rows = [];
+    const yearSel = String(annoSelezionato);
+    const mesePrefix = monthKey(viewDate); // YYYY-MM
+    Object.keys(state.days).sort().forEach(dayKey=>{
+      if(scope==='anno' && dayKey.slice(0,4)!==yearSel) return;
+      if(scope==='mese' && dayKey.slice(0,7)!==mesePrefix) return;
+      const d = state.days[dayKey];
+      (d.entries||[]).forEach(e=>{
+        rows.push({
+          data: dayKey,
+          ora: e.time||'',
+          tipo: e.kind==='spesa' ? 'spesa' : (e.tipo||'radio'),
+          categoria: e.kind==='spesa' ? (e.sottocategoria||'') : '',
+          metodo: e.metodo||'',
+          importo: (typeof e.importo==='number'?e.importo:0),
+          nota: e.nota||''
+        });
+      });
+    });
+    return rows;
+  }
+  function buildCsv(scope){
+    const rows = collectMovements(scope);
+    const head = ['Data','Ora','Tipo','Categoria','Metodo','Importo','Nota'];
+    const lines = [head.join(';')];
+    rows.forEach(r=>{
+      lines.push([
+        r.data, r.ora,
+        TIPO_EXPORT[r.tipo]||r.tipo,
+        r.categoria,
+        METODO_LABEL[r.metodo]||r.metodo,
+        r.importo.toFixed(2).replace('.',','),
+        r.nota
+      ].map(csvEscape).join(';'));
+    });
+    return '\uFEFF' + lines.join('\r\n');
+  }
+
+  document.getElementById('exportJsonBtn').addEventListener('click', ()=>{
+    try{
+      const data = JSON.stringify(state, null, 2);
+      const blob = new Blob([data], { type:'application/json' });
+      const stamp = new Date().toISOString().slice(0,10);
+      offerFileDownload(document.getElementById('backupBtns'), blob, `taxi-backup-${stamp}.json`, 'application/json', '⬇️ Tocca qui per scaricare il JSON');
+      showToast('Backup JSON pronto, tocca il link');
+    }catch(e){ showToast('Errore durante l\'esportazione'); console.error(e); }
+  });
+
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
+    try{
+      const scope = document.getElementById('csvScopeSelect').value;
+      const csv = buildCsv(scope);
+      const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+      const suffix = scope==='anno' ? String(annoSelezionato) : (scope==='mese' ? monthKey(viewDate) : 'completo');
+      offerFileDownload(document.getElementById('backupBtns'), blob, `taxi-movimenti-${suffix}.csv`, 'text/csv', '⬇️ Tocca qui per scaricare il CSV');
+      showToast('CSV pronto, tocca il link');
+    }catch(e){ showToast('Errore durante l\'esportazione'); console.error(e); }
+  });
+
+  // ---- Import JSON: unione non distruttiva ----
+  document.getElementById('importJsonBtn').addEventListener('click', ()=> document.getElementById('importJsonInput').click());
+  document.getElementById('importJsonInput').addEventListener('change', async (ev)=>{
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if(!file) return;
+    let parsed;
+    try{ parsed = JSON.parse(await file.text()); }
+    catch(e){ showToast('File JSON non valido'); return; }
+    if(!parsed || typeof parsed!=='object' || (!parsed.days && !parsed.deadlines)){ showToast('Questo non sembra un backup del gestionale'); return; }
+    const ok = await askConfirm('Importare i dati?', 'I giorni già presenti restano invariati; verranno aggiunti solo i dati nuovi. Le tue impostazioni non vengono modificate.', 'Importa');
+    if(!ok) return;
+    let addDays=0, addDl=0, addRep=0, addScan=0, addMonths=0, addYears=0;
+    // Giorni: aggiungo solo quelli non presenti (vince il locale).
+    Object.keys(parsed.days||{}).forEach(k=>{ if(!state.days[k]){ state.days[k] = parsed.days[k]; addDays++; } });
+    // Mesi/anni: solo se non esistono.
+    Object.keys(parsed.months||{}).forEach(k=>{ if(!state.months[k]){ state.months[k] = parsed.months[k]; addMonths++; } });
+    Object.keys(parsed.years||{}).forEach(k=>{ if(!state.years[k]){ state.years[k] = parsed.years[k]; addYears++; } });
+    // Liste con id: dedup per id.
+    const dlIds = new Set((state.deadlines||[]).map(x=>x.id));
+    (parsed.deadlines||[]).forEach(x=>{ if(x && !dlIds.has(x.id)){ state.deadlines.push(x); dlIds.add(x.id); addDl++; } });
+    const repIds = new Set((state.reports||[]).map(x=>x.id));
+    (parsed.reports||[]).forEach(x=>{ if(x && !repIds.has(x.id)){ state.reports.push(x); repIds.add(x.id); addRep++; } });
+    const scanIds = new Set((state.scansioni||[]).map(x=>x.id));
+    (parsed.scansioni||[]).forEach(x=>{ if(x && !scanIds.has(x.id)){ state.scansioni.push(x); scanIds.add(x.id); addScan++; } });
+    await saveState();
+    renderMain();
+    showToast(`Importati: ${addDays} giorni, ${addDl} scadenze, ${addRep} report, ${addScan} scansioni`);
+  });
+
+  // ---- Import CSV: aggiunge solo i movimenti nuovi (dedup) ----
+  document.getElementById('importCsvBtn').addEventListener('click', ()=> document.getElementById('importCsvInput').click());
+  function parseCsvLine(line){
+    const out=[]; let cur=''; let q=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(q){ if(c==='"'){ if(line[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; }
+      else { if(c==='"') q=true; else if(c===';') { out.push(cur); cur=''; } else cur+=c; }
+    }
+    out.push(cur); return out;
+  }
+  function metodoFromLabel(lbl){
+    const t=(lbl||'').trim().toLowerCase();
+    for(const k of METODI){ if((METODO_LABEL[k]||'').toLowerCase()===t) return k; }
+    if(METODI.includes(t)) return t;
+    return 'contanti';
+  }
+  document.getElementById('importCsvInput').addEventListener('change', async (ev)=>{
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if(!file) return;
+    let text = await file.text();
+    text = text.replace(/^\uFEFF/,'');
+    const lines = text.split(/\r?\n/).filter(l=>l.trim()!=='');
+    if(lines.length<2){ showToast('CSV vuoto o senza righe'); return; }
+    const ok = await askConfirm('Importare i movimenti?', 'Verranno aggiunte solo le corse/spese non già presenti. I duplicati vengono saltati.', 'Importa');
+    if(!ok) return;
+    // Indice dei movimenti già presenti per dedup (data|ora|tipo|metodo|importo).
+    const seen = new Set();
+    Object.keys(state.days).forEach(dk=>{
+      (state.days[dk].entries||[]).forEach(e=>{
+        const imp=(typeof e.importo==='number'?e.importo:0).toFixed(2);
+        const t = e.kind==='spesa'?'spesa':(e.tipo||'radio');
+        seen.add(`${dk}|${e.time||''}|${t}|${e.metodo||''}|${imp}`);
+      });
+    });
+    let added=0, skipped=0, bad=0;
+    for(let i=1;i<lines.length;i++){
+      const c = parseCsvLine(lines[i]);
+      if(c.length<6){ bad++; continue; }
+      const data=(c[0]||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(data)){ bad++; continue; }
+      const ora=(c[1]||'').trim();
+      const tipoLbl=(c[2]||'').trim().toLowerCase();
+      const categoria=(c[3]||'').trim();
+      const metodo=metodoFromLabel(c[4]);
+      const importo=parseFloat((c[5]||'').replace(/\./g,'').replace(',','.'));
+      const nota=(c[6]||'').trim();
+      if(isNaN(importo)||importo<=0){ bad++; continue; }
+      const isSpesa = tipoLbl==='spesa';
+      const tipo = isSpesa ? 'spesa' : (['radio','posteggio','prenotazione'].includes(tipoLbl)?tipoLbl:'radio');
+      const key = `${data}|${ora}|${tipo}|${metodo}|${importo.toFixed(2)}`;
+      if(seen.has(key)){ skipped++; continue; }
+      const d = ensureDay(data);
+      d.entries.push({
+        id: uid(),
+        kind: isSpesa?'spesa':'entrata',
+        tipo: isSpesa?'spesa':tipo,
+        sottocategoria: isSpesa?(categoria||'altro'):null,
+        metodo, importo,
+        time: ora,
+        nota
+      });
+      seen.add(key); added++;
+    }
+    await saveState();
+    renderMain();
+    showToast(`CSV importato: ${added} aggiunti, ${skipped} già presenti${bad?`, ${bad} scartati`:''}`);
+  });
+  // ===================== fine Backup dati =====================
+
   document.getElementById('gearBtn').addEventListener('click', openSettingsSheet);
-  document.getElementById('closeSheetSet').addEventListener('click', ()=>overlaySet.classList.remove('show'));
-  overlaySet.addEventListener('click', (e)=>{ if(e.target===overlaySet) overlaySet.classList.remove('show'); });
+  document.getElementById('closeSheetSet').addEventListener('click', ()=>{ overlaySet.classList.remove('show'); clearBackupTempBlocks(); });
+  overlaySet.addEventListener('click', (e)=>{ if(e.target===overlaySet){ overlaySet.classList.remove('show'); clearBackupTempBlocks(); } });
   document.getElementById('setGestione').addEventListener('change', (e)=>{
     const g = GESTIONE_DEFAULTS[e.target.value];
     if(g){ document.getElementById('setFisso').value = g.fisso; document.getElementById('setAliquotaEcc').value = g.aliquotaEcc; }
