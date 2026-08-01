@@ -429,8 +429,9 @@
 
   .form-row{margin-bottom:14px;}
   .form-row label{display:block; font-size:11px; color:var(--ink-faint); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.05em;}
-  .form-row input[type=text], .form-row input[type=time], .form-row input[type=date], .form-row input[type=password], .form-row select{width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'Inter', sans-serif; font-size:15px; padding:11px 12px; border-radius:9px;}
-  .form-row input:focus, .form-row select:focus{outline:none; border-color:var(--amber-line);}
+  .form-row input[type=text], .form-row input[type=time], .form-row input[type=date], .form-row input[type=password], .form-row select, .form-row textarea{width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'Inter', sans-serif; font-size:15px; padding:11px 12px; border-radius:9px;}
+  .form-row textarea{box-sizing:border-box; resize:none; overflow:hidden; min-height:44px; line-height:1.4;}
+  .form-row input:focus, .form-row select:focus, .form-row textarea:focus{outline:none; border-color:var(--amber-line);}
 
   .save-btn{width:100%; background:var(--amber); color:#241A02; border:none; font-family:'Oswald', sans-serif; font-size:14px; letter-spacing:0.05em; text-transform:uppercase; font-weight:600; padding:14px 0; border-radius:11px; cursor:pointer; margin-top:6px;}
   .save-btn.secondary{background:var(--surface); border:1px solid var(--border); color:var(--ink);}
@@ -457,7 +458,7 @@
   /* --- Leggibilità: testi più grandi e marcati --- */
   body{ font-size:17px !important; }
   .field label, .form-row label, .input-row label{ font-size:16px !important; font-weight:700 !important; color:var(--ink-muted) !important; }
-  .field input, .field select, .form-row input[type=text], .form-row input[type=time], .form-row input[type=date], .form-row input[type=password], .form-row select{ font-size:20px !important; font-weight:600 !important; }
+  .field input, .field select, .form-row input[type=text], .form-row input[type=time], .form-row input[type=date], .form-row input[type=password], .form-row select, .form-row textarea{ font-size:20px !important; font-weight:600 !important; }
   .input-row input{ font-size:19px !important; font-weight:700 !important; }
   .corr-day-label .d{ font-size:16px !important; }
   .corr-day-amt{ font-size:17px !important; }
@@ -596,7 +597,7 @@
       <div class="chip" data-metodo="satispay">Satispay</div>
     </div>
     <div class="form-row"><label>Ora</label><input type="time" id="timeInput"></div>
-    <div class="form-row"><label>Nota (opzionale)</label><input type="text" id="noteInput" placeholder="es. cliente aeroporto..."></div>
+    <div class="form-row"><label>Nota (opzionale)</label><textarea id="noteInput" rows="1" placeholder="es. cliente aeroporto..."></textarea></div>
     </div>
     <button class="save-btn" id="saveEntry">Salva</button>
   </div>
@@ -617,7 +618,7 @@
       <div class="chip" data-cat="altro">Altro</div>
     </div>
     <div class="form-row"><label>Scadenza</label><input type="date" id="dlData"></div>
-    <div class="form-row"><label>Nota (opzionale)</label><input type="text" id="dlNota" placeholder="es. importo, riferimento..."></div>
+    <div class="form-row"><label>Nota (opzionale)</label><textarea id="dlNota" rows="1" placeholder="es. importo, riferimento..."></textarea></div>
     <button class="save-btn" id="saveDeadline">Salva scadenza</button>
   </div>
 </div>
@@ -1253,6 +1254,7 @@
   function nowTimeStr(){ const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; }
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function escapeHtml(s){ const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function autoGrow(el){ if(!el) return; el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; if(!el._autoGrowBound){ el.addEventListener('input', ()=>{ el.style.height='auto'; el.style.height=(el.scrollHeight)+'px'; }); el._autoGrowBound=true; } }
 
   // ---------- Default settings ----------
   const DEFAULT_SETTINGS = {
@@ -4108,6 +4110,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('tipoChips').style.display = formKind==='entrata' ? 'flex' : 'none';
     document.getElementById('altroCatRow').style.display = formKind==='spesa' ? 'block' : 'none';
     overlay.classList.add('show');
+    autoGrow(document.getElementById('noteInput'));
     if(!existingEntry) setTimeout(()=>document.getElementById('amtInput').focus(), 250);
   }
   function closeEntrySheet(){ overlay.classList.remove('show'); editingEntryId = null; }
@@ -4209,6 +4212,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('dlData').value='';
     document.querySelectorAll('#dlCatChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.cat===dlCat));
     overlayDl.classList.add('show');
+    autoGrow(document.getElementById('dlNota'));
   }
   document.getElementById('closeSheetDl').addEventListener('click', ()=>overlayDl.classList.remove('show'));
   overlayDl.addEventListener('click', (e)=>{ if(e.target===overlayDl) overlayDl.classList.remove('show'); });
