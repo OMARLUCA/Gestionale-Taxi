@@ -493,23 +493,6 @@
   .sheet-head h3{ font-size:19px !important; }
   .empty-state{ font-size:16px !important; }
   .deadline-status{ font-size:13px !important; }
-
-  /* ---- Eventi ---- */
-  .ev-card .ev-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
-  .ev-title{font-family:'Oswald',sans-serif;font-size:12.5px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--amber-ink);}
-  .ev-import-btn{background:var(--amber-soft);border:1px solid var(--amber-line);color:var(--amber-ink);border-radius:8px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;font-family:'Oswald',sans-serif;letter-spacing:0.04em;}
-  .ev-list{display:flex;flex-direction:column;gap:9px;}
-  .ev-item{border-left:3px solid var(--amber-line);padding:1px 0 1px 10px;}
-  .ev-nome{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3;}
-  .ev-meta{font-size:12px;color:var(--ink-muted);margin-top:2px;}
-  .ev-empty{font-size:12.5px;color:var(--ink-faint);}
-  .ev-hint{font-size:12.5px;color:var(--ink-muted);margin:0 0 14px;line-height:1.55;}
-  .ev-file{display:flex;align-items:center;justify-content:center;border:1px dashed var(--amber-line);background:var(--amber-soft);border-radius:12px;padding:15px;cursor:pointer;color:var(--amber-ink);font-weight:600;font-size:13px;margin-bottom:12px;}
-  .ev-file input{display:none;}
-  .ev-status{font-size:12.5px;color:var(--ink-muted);margin-bottom:10px;min-height:18px;}
-  .ev-preview{display:flex;flex-direction:column;gap:8px;max-height:42vh;overflow-y:auto;margin-bottom:12px;}
-  .ev-prev-item{background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px 11px;}
-  .ev-confirm{width:100%;padding:13px;border:none;border-radius:12px;background:var(--green);color:#fff;font-family:'Oswald',sans-serif;font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:0.04em;cursor:pointer;}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -1292,7 +1275,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -1333,7 +1316,6 @@
     state.deadlines = parsed.deadlines || [];
     state.reports = parsed.reports || [];
     state.scansioni = parsed.scansioni || [];
-    state.eventi = parsed.eventi || {};
     state.updatedAt = parsed.updatedAt || null;
     state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
     state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
@@ -1979,7 +1961,6 @@
     container.appendChild(card);
 
     const dayAgg = aggregateDayEntries(entries);
-    renderTipologiaMetodoBreakdown(container, dayAgg, 'oggi');
 
     const corseEntries = entries.filter(e=>e.kind==='entrata');
     const elettroniciEntries = corseEntries.filter(e=>METODI_ELETTRONICI.includes(e.metodo));
@@ -1999,6 +1980,7 @@
     note.textContent = 'Elettronici = carta, globix, importo centrale, buoni, app. Aggeggio e Satispay non rientrano in questo totale.';
     sumCard.appendChild(note);
     container.appendChild(sumCard);
+    renderTipologiaMetodoBreakdown(container, dayAgg, 'oggi');
 
     let openRowContent = null;
     function closeOpenRow(){
@@ -4079,7 +4061,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(activeTab==='oggi'){
       renderScadenzeAlert(main);
       renderShiftCapsule(main, dayKey, day, isToday);
-      renderBachecaEventi(main, dayKey);
       renderQuickAddRow(main, dayKey);
       renderEntriesCard(main, dayKey, day, false);
       renderHourlyProductivityCard(main);
@@ -4500,219 +4481,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     showToast('Impostazioni salvate');
     renderMain();
   });
-
-  // ================= EVENTI (bacheca + import PDF calendario Fiera Milano) =================
-  const EV_MESI={gennaio:1,febbraio:2,marzo:3,aprile:4,maggio:5,giugno:6,luglio:7,agosto:8,settembre:9,ottobre:10,novembre:11,dicembre:12};
-  const EV_ABBR=['','gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
-  const EV_TAIL=['ingress','pad','porta','level','gate','via','allianz','punto','largo','rho ','mix ','sede','inizio','orario','ore ','consultare','in fase'];
-  const EV_MONTHRE=/gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre/i;
-  const evPad=n=>String(n).padStart(2,'0');
-  const evEsc=s=>(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  function evFmt(k){const[y,m,d]=k.split('-');return parseInt(d,10)+' '+EV_ABBR[parseInt(m,10)];}
-
-  function evPrimaryMonthYear(filename){
-    let mm=null,yy=null;
-    const mNum=filename.match(/^\s*(\d{1,2})[_\-\s]/); if(mNum) mm=parseInt(mNum[1],10);
-    const yNum=filename.match(/(20\d{2})/); if(yNum) yy=parseInt(yNum[1],10);
-    if(!mm){for(const k in EV_MESI){if(filename.toLowerCase().includes(k)){mm=EV_MESI[k];break;}}}
-    return {pm:mm,year:yy};
-  }
-  function evToRows(tokens){
-    const byY={};
-    tokens.forEach(t=>{const k=Math.round(t.y/3);(byY[k]=byY[k]||[]).push(t);});
-    return Object.keys(byY).map(Number).sort((a,b)=>a-b).map(k=>{
-      const ts=byY[k].sort((a,b)=>a.x-b.x);
-      const col=(lo,hi)=>ts.filter(t=>t.x>=lo&&t.x<hi).map(t=>t.s).join(' ').replace(/\s+/g,' ').trim();
-      return {y:k*3, data:col(0,140), body:col(140,402), orar:col(402,9999)};
-    });
-  }
-  const evIsTail=b=>{const s=b.toLowerCase();return EV_TAIL.some(t=>s.startsWith(t));};
-  const evIsLabel=d=>/preregistr|^evento:/i.test(d);
-  const evHasDay=d=>(/\d/.test(d)||EV_MONTHRE.test(d))&&!evIsLabel(d);
-  function evParseGiorni(txt,pm,year){
-    txt=txt.replace(/[\u2013\u2014]/g,'-').replace(/1\u00b0/g,'1').toLowerCase();
-    const monthAt=[];
-    for(const name in EV_MESI){let i=txt.indexOf(name);while(i>=0){monthAt.push({idx:i,month:EV_MESI[name]});i=txt.indexOf(name,i+1);}}
-    monthAt.sort((a,b)=>a.idx-b.idx);
-    const monthForPos=pos=>{for(const m of monthAt){if(m.idx>=pos)return m.month;}return monthAt.length?monthAt[monthAt.length-1].month:pm;};
-    const nums=[];const re=/\d{1,2}/g;let m;while((m=re.exec(txt))){nums.push({n:parseInt(m[0],10),pos:m.index});}
-    if(!nums.length)return[];
-    const dm=nums.map(x=>({day:x.n,month:monthForPos(x.pos)}));
-    const yearFor=mo=>{
-      if(pm==null||year==null)return year||new Date().getFullYear();
-      if(mo===pm)return year;
-      if(mo===(pm%12)+1)return pm===12?year+1:year;
-      if(mo===((pm+10)%12)+1)return pm===1?year-1:year;
-      return year;
-    };
-    let giorni=[];
-    if(dm.length===2){
-      const a=dm[0],b=dm[1];
-      let cur=new Date(yearFor(a.month),a.month-1,a.day);
-      const end=new Date(yearFor(b.month),b.month-1,b.day);
-      let g=0;while(cur<=end&&g++<400){giorni.push(cur.getFullYear()+'-'+evPad(cur.getMonth()+1)+'-'+evPad(cur.getDate()));cur.setDate(cur.getDate()+1);}
-    } else {
-      dm.forEach(d=>giorni.push(yearFor(d.month)+'-'+evPad(d.month)+'-'+evPad(d.day)));
-    }
-    return [...new Set(giorni)].sort();
-  }
-  const evCleanNome=s=>s.replace(/^([A-Z])\s(?=[A-Z])/,'$1').replace(/\s+\d{1,2}$/,'').replace(/\s+/g,' ').trim();
-  const evCleanLuogo=s=>s.replace(/^sede:?\s*/i,'').replace(/\s+/g,' ').trim();
-  function evParseEventi(tokens,filename){
-    const {pm,year}=evPrimaryMonthYear(filename);
-    const rows=evToRows(tokens);
-    const sedeIdx=rows.map((r,i)=>/^sede/i.test(r.body)?i:-1).filter(i=>i>=0);
-    if(!sedeIdx.length)return[];
-    const titleIdx=[];let searchFrom=0;
-    for(let k=0;k<sedeIdx.length;k++){
-      let ti=-1;
-      for(let i=searchFrom;i<=sedeIdx[k];i++){
-        if(rows[i].body&&!evIsTail(rows[i].body)&&/[A-Za-z]{3,}/.test(rows[i].body)){ti=i;break;}
-      }
-      if(ti<0)ti=searchFrom;
-      titleIdx.push(ti);searchFrom=sedeIdx[k]+1;
-    }
-    const eventi=titleIdx.map((ti,k)=>{
-      const to=(k+1<titleIdx.length)?titleIdx[k+1]:rows.length;
-      const slice=rows.slice(ti,to);
-      const sedeRow=slice.find(r=>/^sede/i.test(r.body));
-      let orario='';const oJoin=slice.map(r=>r.orar).filter(Boolean).join(' ');let mo;
-      if((mo=oJoin.match(/ore\s*\d{1,2}[:.]\d{2}/i)))orario=mo[0].replace('.',':');
-      else if((mo=oJoin.match(/\d{1,2}[:.]\d{2}\s*[-\u2013]\s*\d{1,2}[:.]\d{2}/)))orario=mo[0].replace('.',':');
-      else if(/definizione/i.test(oJoin))orario='orario da definire';
-      else if(/consultare/i.test(oJoin))orario='vedi sito ufficiale';
-      return {nome:evCleanNome(rows[ti].body),luogo:sedeRow?evCleanLuogo(sedeRow.body):'',orario,y:rows[ti].y,giorni:[]};
-    });
-    const dateRows=rows.filter(r=>evHasDay(r.data));
-    const buckets={};
-    dateRows.forEach(r=>{let best=0,bd=1e9;eventi.forEach((e,i)=>{const d=Math.abs(e.y-r.y);if(d<bd){bd=d;best=i;}});(buckets[best]=buckets[best]||[]).push(r.data);});
-    eventi.forEach((e,i)=>{e.giorni=evParseGiorni((buckets[i]||[]).join(' '),pm,year);});
-    return eventi.filter(e=>e.giorni.length).map(e=>({start:e.giorni[0],end:e.giorni[e.giorni.length-1],giorni:e.giorni,nome:e.nome,luogo:e.luogo,orario:e.orario}));
-  }
-
-  // ---- pdf.js lazy load ----
-  let evPdfLibLoading=null;
-  function evLoadPdfLib(){
-    if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
-    if(evPdfLibLoading) return evPdfLibLoading;
-    evPdfLibLoading=new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-      s.onload=()=>{try{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}catch(e){}res(window.pdfjsLib);};
-      s.onerror=()=>rej(new Error('pdfjs load failed'));
-      document.head.appendChild(s);
-    });
-    return evPdfLibLoading;
-  }
-  async function evExtractTokens(file){
-    const lib=await evLoadPdfLib();
-    const buf=await file.arrayBuffer();
-    const pdf=await lib.getDocument({data:buf}).promise;
-    const toks=[];
-    for(let p=1;p<=pdf.numPages;p++){
-      const page=await pdf.getPage(p);
-      const vp=page.getViewport({scale:1});
-      const tc=await page.getTextContent();
-      tc.items.forEach(it=>{
-        if(!it.str||!it.str.trim())return;
-        toks.push({s:it.str.trim(),x:it.transform[4],y:(p-1)*10000+(vp.height-it.transform[5])});
-      });
-    }
-    return toks;
-  }
-
-  // ---- bacheca in tab Oggi ----
-  function renderBachecaEventi(container,dayKey){
-    const arr=(state.eventi&&state.eventi[dayKey])||[];
-    const card=document.createElement('div');card.className='card ev-card';
-    const head=document.createElement('div');head.className='ev-head';
-    head.innerHTML='<span class="ev-title">Eventi in citt\u00e0</span>';
-    const btn=document.createElement('button');btn.className='ev-import-btn';btn.textContent='\uff0b PDF';
-    btn.addEventListener('click',openEventiSheet);head.appendChild(btn);card.appendChild(head);
-    if(arr.length){
-      const list=document.createElement('div');list.className='ev-list';
-      arr.slice().sort((a,b)=>(a.orario||'').localeCompare(b.orario||'')).forEach(e=>{
-        const row=document.createElement('div');row.className='ev-item';
-        const meta=[e.luogo,e.orario].filter(Boolean).map(evEsc).join(' \u00b7 ');
-        row.innerHTML='<div class="ev-nome">'+evEsc(e.nome)+'</div>'+(meta?'<div class="ev-meta">'+meta+'</div>':'');
-        list.appendChild(row);
-      });
-      card.appendChild(list);
-    } else {
-      const empty=document.createElement('div');empty.className='ev-empty';
-      empty.textContent='Nessun evento per questo giorno';card.appendChild(empty);
-    }
-    container.appendChild(card);
-  }
-
-  // ---- import sheet ----
-  let evParsed=null,evFileName='';
-  function openEventiSheet(){
-    let ov=document.getElementById('overlayEventi');
-    if(!ov){
-      ov=document.createElement('div');ov.className='overlay';ov.id='overlayEventi';
-      ov.innerHTML='<div class="sheet"><div class="sheet-head"><h3>Importa eventi da PDF</h3><button id="evClose">\u2715</button></div>'+
-        '<p class="ev-hint">Carica il PDF mensile del calendario. L\'app legge date, nome e luogo e riempie la bacheca giorno per giorno. Controlla l\'anteprima e conferma. Il primo caricamento richiede una connessione a internet.</p>'+
-        '<label class="ev-file"><input type="file" id="evFile" accept="application/pdf"><span>Scegli il PDF\u2026</span></label>'+
-        '<div id="evStatus" class="ev-status"></div><div id="evPreview" class="ev-preview"></div>'+
-        '<button id="evConfirm" class="ev-confirm" style="display:none">Conferma e salva</button></div>';
-      document.body.appendChild(ov);
-      ov.addEventListener('click',e=>{if(e.target===ov)ov.classList.remove('show');});
-      ov.querySelector('#evClose').addEventListener('click',()=>ov.classList.remove('show'));
-      ov.querySelector('#evFile').addEventListener('change',evOnFile);
-      ov.querySelector('#evConfirm').addEventListener('click',async()=>{
-        if(!evParsed||!evParsed.length)return;
-        evSaveImported(evParsed,evFileName);
-        await saveState();
-        ov.classList.remove('show');
-        showToast('Eventi importati');
-        renderMain();
-      });
-    }
-    ov.querySelector('#evStatus').textContent='';
-    ov.querySelector('#evPreview').innerHTML='';
-    ov.querySelector('#evConfirm').style.display='none';
-    ov.querySelector('#evFile').value='';
-    ov.querySelector('.ev-file span').textContent='Scegli il PDF\u2026';
-    evParsed=null;
-    ov.classList.add('show');
-  }
-  async function evOnFile(e){
-    const file=e.target.files&&e.target.files[0];if(!file)return;
-    evFileName=file.name;
-    const ov=document.getElementById('overlayEventi');
-    ov.querySelector('.ev-file span').textContent=file.name;
-    const st=ov.querySelector('#evStatus');st.textContent='Leggo il PDF\u2026';
-    ov.querySelector('#evPreview').innerHTML='';ov.querySelector('#evConfirm').style.display='none';
-    try{
-      const toks=await evExtractTokens(file);
-      if(!toks.length){st.textContent='Il PDF non contiene testo estraibile (forse \u00e8 una scansione).';return;}
-      evParsed=evParseEventi(toks,file.name);
-      if(!evParsed.length){st.textContent='Non ho trovato eventi riconoscibili in questo PDF.';return;}
-      const days=new Set();evParsed.forEach(ev=>ev.giorni.forEach(g=>days.add(g)));
-      st.textContent='Trovati '+evParsed.length+' eventi su '+days.size+' giorni.';
-      evRenderPreview(evParsed);
-      ov.querySelector('#evConfirm').style.display='block';
-    }catch(err){console.error(err);st.textContent='Errore nella lettura del PDF. Per il primo caricamento serve connessione a internet.';}
-  }
-  function evRenderPreview(events){
-    const wrap=document.getElementById('evPreview');wrap.innerHTML='';
-    events.forEach(ev=>{
-      const d=document.createElement('div');d.className='ev-prev-item';
-      const range=ev.start===ev.end?evFmt(ev.start):evFmt(ev.start)+' \u2013 '+evFmt(ev.end);
-      const meta=[range,ev.luogo,ev.orario].filter(Boolean).map(evEsc).join(' \u00b7 ');
-      d.innerHTML='<div class="ev-nome">'+evEsc(ev.nome)+'</div><div class="ev-meta">'+meta+'</div>';
-      wrap.appendChild(d);
-    });
-  }
-  function evSaveImported(events,filename){
-    if(!state.eventi)state.eventi={};
-    const prefixes=new Set();
-    events.forEach(e=>e.giorni.forEach(g=>prefixes.add(g.slice(0,7))));
-    Object.keys(state.eventi).forEach(k=>{if(prefixes.has(k.slice(0,7)))delete state.eventi[k];});
-    events.forEach(e=>e.giorni.forEach(g=>{(state.eventi[g]=state.eventi[g]||[]).push({nome:e.nome,luogo:e.luogo,orario:e.orario});}));
-  }
-  // ================= /EVENTI =================
 
   // ---------- Init ----------
   (async function init(){
