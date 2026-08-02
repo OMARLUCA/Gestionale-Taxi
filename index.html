@@ -832,8 +832,20 @@
       <summary id="scanRawSummary" style="font-size:13px; color:var(--ink-muted); cursor:pointer;">Testo letto dalla foto</summary>
       <pre id="scanRawText" style="white-space:pre-wrap; font-size:12px; line-height:1.45; color:var(--ink-muted); background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:10px; margin-top:8px; max-height:180px; overflow:auto;"></pre>
     </details>
+    <div id="scanPagamentoBox" style="margin-top:14px;"></div>
     <button class="save-btn" id="saveScanBtn" style="margin-top:8px;">Salva corsa</button>
     <button class="save-btn" id="deleteScanBtn" style="margin-top:8px; display:none; background:var(--red-soft); color:var(--red); border:1px solid var(--red-line);">Elimina questa corsa</button>
+  </div>
+</div>
+
+<div class="overlay" id="overlayPagamento">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head"><h3>Nuovo pagamento</h3><button id="closeSheetPagamento">✕</button></div>
+    <div class="subnote" id="pagamentoRiepilogo" style="margin-bottom:14px;"></div>
+    <div class="form-row"><label>Data pagamento</label><input type="date" id="pagDataInput"></div>
+    <div class="form-row"><label>Nota (es. "Bonifico radiotaxi luglio")</label><textarea id="pagNotaInput" rows="1" placeholder="opzionale"></textarea></div>
+    <button class="save-btn" id="savePagamentoBtn" style="margin-top:8px;">Crea pagamento</button>
   </div>
 </div>
 
@@ -1297,7 +1309,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, pagamenti: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -1339,6 +1351,7 @@
     state.reports = parsed.reports || [];
     state.scansioni = parsed.scansioni || [];
     state.eventi = parsed.eventi || {};
+    state.pagamenti = parsed.pagamenti || [];
     state.updatedAt = parsed.updatedAt || null;
     state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
     state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
@@ -2671,6 +2684,88 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
 
   let scanEditingId = null;
+  let scanFilter = 'daArchiviare'; // 'daArchiviare' | 'pagamenti' | 'tutte'
+  let scanSelected = new Set(); // _id delle corse selezionate per creare un nuovo pagamento
+  let expandedPagamentoId = null;
+  let pagamentoPendingIds = []; // _id in attesa di conferma nell'overlay Nuovo pagamento
+
+  function isArchived(e){ return !!e.pagamentoId || !!e.pagato; }
+  function pagamentoOf(e){ return e.pagamentoId ? (state.pagamenti||[]).find(p=>p.id===e.pagamentoId) : null; }
+  function fmtDataIt(k){ if(!k) return '—'; const [y,m,d]=k.split('-'); return `${d}/${m}/${y}`; }
+
+  function renderScanPagamentoBox(entry){
+    const box = document.getElementById('scanPagamentoBox');
+    if(isArchived(entry)){
+      const pag = pagamentoOf(entry);
+      box.innerHTML = pag
+        ? `<div style="padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px;">
+            <div style="font-size:13.5px; color:var(--ink);">✓ Archiviata nel pagamento del <b>${fmtDataIt(pag.data)}</b>${pag.nota?` — ${escapeHtml(pag.nota)}`:''}</div>
+            <button class="save-btn" id="riapriScanBtn" style="margin-top:10px; background:transparent; color:var(--ink-muted); border:1px solid var(--border);">↩️ Riapri questa corsa</button>
+          </div>`
+        : `<div style="padding:12px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px;">
+            <div style="font-size:13.5px; color:var(--ink);">✓ Segnata come pagata</div>
+            <button class="save-btn" id="riapriScanBtn" style="margin-top:10px; background:transparent; color:var(--ink-muted); border:1px solid var(--border);">↩️ Riapri questa corsa</button>
+          </div>`;
+      const btn = document.getElementById('riapriScanBtn');
+      if(btn) btn.addEventListener('click', async ()=>{
+        const ok = await askConfirm('Riaprire la corsa?', 'Tornerà tra quelle da archiviare.', 'Riapri');
+        if(!ok) return;
+        await riapriCorsa(entry);
+        renderScanPagamentoBox(entry);
+        renderMain();
+      });
+    } else {
+      box.innerHTML = `<button class="save-btn" id="segnaPagataBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">💰 Segna come pagata…</button>`;
+      document.getElementById('segnaPagataBtn').addEventListener('click', ()=>{
+        if(!entry._id){ showToast('Salva prima la corsa'); return; }
+        openPagamentoCreateSheet([entry._id]);
+      });
+    }
+  }
+
+  async function riapriCorsa(entry){
+    if(entry.pagamentoId){
+      const pag = (state.pagamenti||[]).find(p=>p.id===entry.pagamentoId);
+      entry.pagamentoId = null;
+      if(pag){
+        const rimaste = (state.scansioni||[]).some(s=>s.pagamentoId===pag.id);
+        if(!rimaste) state.pagamenti = state.pagamenti.filter(p=>p.id!==pag.id);
+      }
+    }
+    entry.pagato = false;
+    await saveState();
+  }
+
+  function openPagamentoCreateSheet(ids){
+    pagamentoPendingIds = ids.slice();
+    const entries = (state.scansioni||[]).filter(e=>pagamentoPendingIds.includes(e._id));
+    const tot = entries.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
+    document.getElementById('pagamentoRiepilogo').textContent = `${entries.length} ${entries.length===1?'corsa':'corse'} · totale ${fmtMoney(tot)} €`;
+    document.getElementById('pagDataInput').value = dateKey(new Date());
+    document.getElementById('pagNotaInput').value = '';
+    document.getElementById('overlayPagamento').classList.add('show');
+  }
+  document.getElementById('closeSheetPagamento').addEventListener('click', ()=> document.getElementById('overlayPagamento').classList.remove('show'));
+  document.getElementById('overlayPagamento').addEventListener('click', (e)=>{ if(e.target.id==='overlayPagamento') document.getElementById('overlayPagamento').classList.remove('show'); });
+  document.getElementById('savePagamentoBtn').addEventListener('click', async ()=>{
+    if(pagamentoPendingIds.length===0){ showToast('Nessuna corsa selezionata'); return; }
+    const pag = {
+      id: 'pag-'+Date.now(),
+      data: document.getElementById('pagDataInput').value || dateKey(new Date()),
+      nota: document.getElementById('pagNotaInput').value.trim(),
+      createdAt: Date.now()
+    };
+    if(!state.pagamenti) state.pagamenti = [];
+    state.pagamenti.push(pag);
+    (state.scansioni||[]).forEach(e=>{ if(pagamentoPendingIds.includes(e._id)){ e.pagamentoId = pag.id; e.pagato = true; } });
+    await saveState();
+    document.getElementById('overlayPagamento').classList.remove('show');
+    scanSelected.clear();
+    pagamentoPendingIds = [];
+    showToast('Pagamento creato');
+    renderMain();
+  });
+
   function openScanReviewSheet(parsed, existingId){
     scanEditingId = existingId || null;
     document.getElementById('scanIdInput').value = parsed.id||'';
@@ -2681,6 +2776,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('scanPrezzoInput').value = parsed.prezzo ? parsed.prezzo.replace(',','.') : '';
     document.getElementById('scanMetodoInput').value = mapScanMetodo(parsed.metodo);
     document.getElementById('deleteScanBtn').style.display = existingId ? 'block' : 'none';
+    renderScanPagamentoBox(parsed);
     const rawWrap = document.getElementById('scanRawWrap');
     const rawSummary = document.getElementById('scanRawSummary');
     if(!existingId && lastOcrError){
@@ -3315,27 +3411,148 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     container.appendChild(card);
 
     const list = state.scansioni||[];
+    const daArchiviare = list.filter(e=>!isArchived(e));
+    const archiviate = list.filter(e=>isArchived(e));
     const totale = list.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
+    const totaleDaArchiviare = daArchiviare.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
+    const pagamenti = state.pagamenti||[];
     const sumCard = document.createElement('div'); sumCard.className='card';
     sumCard.innerHTML = `<div class="kv-row"><span class="k">Corse scansionate</span><span class="v">${list.length}</span></div>
       <div class="kv-row"><span class="k">Totale importi</span><span class="v">${fmtMoney(totale)} €</span></div>
+      <div class="kv-row"><span class="k">Da archiviare</span><span class="v">${daArchiviare.length} · ${fmtMoney(totaleDaArchiviare)} €</span></div>
+      <div class="kv-row"><span class="k">Pagamenti registrati</span><span class="v">${pagamenti.length} (${archiviate.length} corse)</span></div>
       <button class="save-btn" id="genScanPdfBtn" style="margin-top:10px;" ${list.length===0?'disabled':''}>📄 Genera PDF riepilogo</button>`;
     container.appendChild(sumCard);
 
-    if(list.length===0){
-      const es = document.createElement('div'); es.className='card';
-      es.innerHTML = `<div class="subnote">Nessuna corsa scansionata ancora.</div>`;
-      container.appendChild(es);
-    } else {
-      const listCard = document.createElement('div'); listCard.className='card';
-      listCard.innerHTML = `<h2>Corse scansionate</h2>`;
-      [...list].sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
-        const row = document.createElement('div'); row.className='kv-row'; row.style.cursor='pointer';
-        row.innerHTML = `<span class="k">${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}</span><span class="v">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
-        row.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
-        listCard.appendChild(row);
-      });
-      container.appendChild(listCard);
+    // Filtro: Da archiviare (default) / Pagamenti / Tutte — tutto resta sempre richiamabile.
+    const filterCard = document.createElement('div'); filterCard.className='card';
+    filterCard.style.padding='10px 14px';
+    const chipsWrap = document.createElement('div'); chipsWrap.style.cssText='display:flex; gap:8px; flex-wrap:wrap;';
+    const filterOpts = [ ['daArchiviare','Da archiviare'], ['pagamenti','Pagamenti'], ['tutte','Tutte'] ];
+    filterOpts.forEach(([val,label])=>{
+      const chip = document.createElement('div'); chip.className='chip'+(scanFilter===val?' active':'');
+      chip.textContent = label;
+      chip.addEventListener('click', ()=>{ scanFilter = val; scanSelected.clear(); renderMain(); });
+      chipsWrap.appendChild(chip);
+    });
+    filterCard.appendChild(chipsWrap);
+    container.appendChild(filterCard);
+
+    if(scanFilter==='daArchiviare'){
+      if(daArchiviare.length===0){
+        const es = document.createElement('div'); es.className='card';
+        es.innerHTML = `<div class="subnote">Nessuna corsa da archiviare: sei in pari.</div>`;
+        container.appendChild(es);
+      } else {
+        // Barra azione: appare quando c'è una selezione, per creare un pagamento-contenitore.
+        if(scanSelected.size>0){
+          const selEntries = daArchiviare.filter(e=>scanSelected.has(e._id));
+          const selTot = selEntries.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
+          const actionCard = document.createElement('div'); actionCard.className='card';
+          actionCard.style.cssText='position:sticky; top:0; z-index:5; background:var(--amber-soft, var(--surface-2));';
+          actionCard.innerHTML = `<button class="save-btn" id="creaPagamentoBtn">💰 Crea pagamento (${selEntries.length} ${selEntries.length===1?'corsa':'corse'} · ${fmtMoney(selTot)} €)</button>`;
+          container.appendChild(actionCard);
+          actionCard.querySelector('#creaPagamentoBtn').addEventListener('click', ()=> openPagamentoCreateSheet([...scanSelected]));
+        }
+        const listCard = document.createElement('div'); listCard.className='card';
+        listCard.innerHTML = `<h2>Da archiviare</h2><div class="subnote" style="margin-bottom:8px;">Seleziona le corse pagate insieme (es. lo stesso bonifico) e crea un pagamento.</div>`;
+        [...daArchiviare].sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
+          const row = document.createElement('div');
+          row.style.cssText='display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border);';
+          const check = document.createElement('input');
+          check.type='checkbox'; check.checked = scanSelected.has(e._id);
+          check.style.cssText='width:20px; height:20px; flex:none; accent-color:var(--amber-line); cursor:pointer;';
+          check.addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            if(check.checked) scanSelected.add(e._id); else scanSelected.delete(e._id);
+            renderMain();
+          });
+          const info = document.createElement('div');
+          info.style.cssText='flex:1; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px;';
+          info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}</span><span style="font-weight:700;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+          info.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
+          row.appendChild(check);
+          row.appendChild(info);
+          listCard.appendChild(row);
+        });
+        container.appendChild(listCard);
+      }
+    } else if(scanFilter==='pagamenti'){
+      if(pagamenti.length===0){
+        const es = document.createElement('div'); es.className='card';
+        es.innerHTML = `<div class="subnote">Nessun pagamento creato ancora. Vai su "Da archiviare", seleziona le corse pagate insieme e crea un pagamento.</div>`;
+        container.appendChild(es);
+      } else {
+        [...pagamenti].sort((a,b)=> (b.data||'').localeCompare(a.data||'') || (b.createdAt||0)-(a.createdAt||0)).forEach(pag=>{
+          const corse = list.filter(e=>e.pagamentoId===pag.id);
+          const totPag = corse.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
+          const pagCard = document.createElement('div'); pagCard.className='card';
+          const head = document.createElement('div');
+          head.style.cssText='display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px;';
+          head.innerHTML = `<div><div style="font-weight:700; font-size:15px;">${fmtDataIt(pag.data)}${pag.nota?` — ${escapeHtml(pag.nota)}`:''}</div><div class="subnote" style="margin-top:2px;">${corse.length} ${corse.length===1?'corsa':'corse'}</div></div><div style="font-weight:700; font-size:16px;">${fmtMoney(totPag)} €</div>`;
+          pagCard.appendChild(head);
+          head.addEventListener('click', ()=>{ expandedPagamentoId = (expandedPagamentoId===pag.id) ? null : pag.id; renderMain(); });
+          if(expandedPagamentoId===pag.id){
+            const body = document.createElement('div'); body.style.marginTop='12px';
+            corse.sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
+              const row = document.createElement('div');
+              row.style.cssText='display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--border);';
+              const info = document.createElement('div');
+              info.style.cssText='flex:1; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px; font-size:13.5px;';
+              info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}</span><span style="font-weight:600;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+              info.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
+              const undo = document.createElement('button');
+              undo.textContent='↩️'; undo.title='Rimuovi dal pagamento';
+              undo.style.cssText='background:none; border:none; font-size:15px; cursor:pointer; flex:none;';
+              undo.addEventListener('click', async (ev)=>{
+                ev.stopPropagation();
+                const ok = await askConfirm('Rimuovere dal pagamento?', 'La corsa torna tra quelle da archiviare.', 'Rimuovi');
+                if(!ok) return;
+                await riapriCorsa(e);
+                renderMain();
+              });
+              row.appendChild(info); row.appendChild(undo);
+              body.appendChild(row);
+            });
+            const reopenAllBtn = document.createElement('button');
+            reopenAllBtn.className='save-btn';
+            reopenAllBtn.style.cssText='margin-top:10px; background:transparent; color:var(--ink-muted); border:1px solid var(--border);';
+            reopenAllBtn.textContent='↩️ Riapri l\'intero pagamento';
+            reopenAllBtn.addEventListener('click', async (ev)=>{
+              ev.stopPropagation();
+              const ok = await askConfirm('Riaprire il pagamento?', `Le ${corse.length} corse torneranno tra quelle da archiviare e il pagamento verrà eliminato.`, 'Riapri');
+              if(!ok) return;
+              corse.forEach(e=>{ e.pagamentoId=null; e.pagato=false; });
+              state.pagamenti = state.pagamenti.filter(p=>p.id!==pag.id);
+              await saveState();
+              expandedPagamentoId = null;
+              renderMain();
+            });
+            body.appendChild(reopenAllBtn);
+            pagCard.appendChild(body);
+          }
+          container.appendChild(pagCard);
+        });
+      }
+    } else { // tutte
+      if(list.length===0){
+        const es = document.createElement('div'); es.className='card';
+        es.innerHTML = `<div class="subnote">Nessuna corsa scansionata ancora.</div>`;
+        container.appendChild(es);
+      } else {
+        const listCard = document.createElement('div'); listCard.className='card';
+        listCard.innerHTML = `<h2>Corse scansionate</h2>`;
+        [...list].sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
+          const arch = isArchived(e);
+          const pag = pagamentoOf(e);
+          const row = document.createElement('div'); row.className='kv-row'; row.style.cursor='pointer';
+          const badge = arch ? `<div style="font-size:11px; color:var(--ink-faint); margin-top:2px;">✓ ${pag?`Pagamento del ${fmtDataIt(pag.data)}`:'Pagata'}</div>` : '';
+          row.innerHTML = `<span class="k">${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${badge}</span><span class="v" style="${arch?'color:var(--ink-faint);':''}">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+          row.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
+          listCard.appendChild(row);
+        });
+        container.appendChild(listCard);
+      }
     }
 
     document.getElementById('scanBtn').addEventListener('click', ()=>{
@@ -3377,6 +3594,11 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       prezzo: document.getElementById('scanPrezzoInput').value,
       metodo: document.getElementById('scanMetodoInput').value.trim()
     };
+    // Preservo lo stato di archiviazione/pagamento se la corsa esisteva già.
+    if(scanEditingId){
+      const prev = state.scansioni.find(s=>s._id===scanEditingId);
+      if(prev){ entry.pagato = prev.pagato; entry.pagamentoId = prev.pagamentoId; }
+    }
     if(!entry.prezzo){ showToast('Inserisci almeno il prezzo'); return; }
     const idx = state.scansioni.findIndex(s=>s._id===entry._id);
     if(idx>=0) state.scansioni[idx] = entry; else state.scansioni.push(entry);
@@ -4842,6 +5064,11 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     (parsed.reports||[]).forEach(x=>{ if(x && !repIds.has(x.id)){ state.reports.push(x); repIds.add(x.id); addRep++; } });
     const scanIds = new Set((state.scansioni||[]).map(x=>x.id));
     (parsed.scansioni||[]).forEach(x=>{ if(x && !scanIds.has(x.id)){ state.scansioni.push(x); scanIds.add(x.id); addScan++; } });
+    // Pagamenti (contenitori di corse archiviate insieme): dedup per id.
+    let addPag=0;
+    if(!state.pagamenti) state.pagamenti = [];
+    const pagIds = new Set(state.pagamenti.map(x=>x.id));
+    (parsed.pagamenti||[]).forEach(x=>{ if(x && !pagIds.has(x.id)){ state.pagamenti.push(x); pagIds.add(x.id); addPag++; } });
     // Eventi: unisco per data, senza duplicare (dedup per nome).
     let addEv=0;
     if(parsed.eventi && typeof parsed.eventi==='object'){
