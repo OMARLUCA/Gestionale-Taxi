@@ -586,6 +586,13 @@
         <option value="servizi_vari">Servizi vari</option>
       </select>
     </div>
+    <div class="form-row" id="ricorrenteRow" style="display:none;">
+      <label id="ricorrenteCheckRow" style="display:flex; align-items:center; gap:10px; cursor:pointer; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:12px;">
+        <input type="checkbox" id="ricorrenteCheck" style="width:19px; height:19px; flex:none; accent-color:var(--amber-line);">
+        <span style="font-size:13.5px; font-weight:600; color:var(--ink);">🔁 Spesa ricorrente: ripetila automaticamente ogni mese</span>
+      </label>
+      <div id="ricorrenteInfoBox" style="display:none;"></div>
+    </div>
     <div class="chip-row" id="metodoChips">
       <div class="chip active" data-metodo="carta">Carta</div>
       <div class="chip" data-metodo="contanti">Contanti</div>
@@ -784,6 +791,12 @@
       </div>
       <input type="file" id="importJsonInput" accept=".json,application/json" style="display:none;">
       <input type="file" id="importCsvInput" accept=".csv,text/csv" style="display:none;">
+    </div>
+
+    <div class="settings-section" id="ricorrentiSection">
+      <h4>Spese ricorrenti</h4>
+      <div class="subnote" style="margin-bottom:10px;">Le spese che hai reso ricorrenti dal modulo di inserimento. Puoi disattivarle da qui senza cercare la voce originale: i mesi già generati restano invariati.</div>
+      <div id="ricorrentiListBox"></div>
     </div>
 
     <div class="settings-section" id="accountSection" style="display:none;">
@@ -988,9 +1001,11 @@
       // Adotto il cloud solo se ha dati veri E (il locale è vuoto OPPURE il cloud è più recente).
       if(remoteHas && (!localHas || remoteAt > localAt)){
         applyLoadedState(remote);
+        if(generaSpeseRicorrenti()) state.updatedAt = new Date().toISOString();
         await window.storage.set('taxi31-log', JSON.stringify(state), false);
         if(typeof renderMain==='function') renderMain();
         setPill('Dati aggiornati dal cloud', true);
+        scheduleCloudPush();
         return;
       }
       // Altrimenti vince il locale (o sono entrambi vuoti): salvo il locale nel cloud.
@@ -1309,7 +1324,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, pagamenti: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, pagamenti: [], speseRicorrenti: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -1352,6 +1367,7 @@
     state.scansioni = parsed.scansioni || [];
     state.eventi = parsed.eventi || {};
     state.pagamenti = parsed.pagamenti || [];
+    state.speseRicorrenti = parsed.speseRicorrenti || [];
     state.updatedAt = parsed.updatedAt || null;
     state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
     state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
@@ -1372,6 +1388,7 @@
         applyLoadedState(JSON.parse(res.value));
       }
     }catch(e){ /* no data yet */ }
+    if(generaSpeseRicorrenti()) await saveState();
   }
   async function saveState(){
     state.updatedAt = new Date().toISOString();
@@ -1856,6 +1873,49 @@
     return 'servizi_vari';
   }
   function isCarburante(e){ return e.kind==='spesa' && spesaCategoria(e)==='carburante'; }
+
+  // ---------- Spese ricorrenti ----------
+  function nextMonthKey(mkey){
+    const [y,m] = mkey.split('-').map(Number);
+    const nm = m===12 ? 1 : m+1, ny = m===12 ? y+1 : y;
+    return `${ny}-${pad(nm)}`;
+  }
+  function meseLabel(mkey){
+    const [y,m] = mkey.split('-').map(Number);
+    return `${MESI_FULL[m-1]} ${y}`;
+  }
+  function creaSpesaRicorrenteEntry(r, mkey){
+    const [y,m] = mkey.split('-').map(Number);
+    const ultimoGiorno = new Date(y, m, 0).getDate();
+    const giorno = Math.min(r.giorno||1, ultimoGiorno);
+    const dayKey = `${mkey}-${pad(giorno)}`;
+    const d = ensureDay(dayKey);
+    d.entries.push({
+      id: uid(), kind:'spesa', tipo:'spesa',
+      sottocategoria: r.sottocategoria, metodo: r.metodo, importo: r.importo,
+      time: '12:00', nota: 'Spesa ricorrente',
+      ricorrenzaId: r.id
+    });
+  }
+  // Genera le occorrenze mancanti fino al mese reale corrente (mai oltre): così nei resoconti
+  // la spesa ricorrente compare progressivamente col passare dei mesi, non tutta insieme in anticipo.
+  function generaSpeseRicorrenti(){
+    if(!state.speseRicorrenti || state.speseRicorrenti.length===0) return false;
+    const meseCorrente = monthKey(new Date());
+    let changed = false;
+    state.speseRicorrenti.forEach(r=>{
+      if(!r.attiva) return;
+      let cursor = r.meseUltimaGenerazione ? nextMonthKey(r.meseUltimaGenerazione) : r.meseInizio;
+      let guard = 0;
+      while(cursor<=meseCorrente && guard++<600){
+        creaSpesaRicorrenteEntry(r, cursor);
+        r.meseUltimaGenerazione = cursor;
+        changed = true;
+        cursor = nextMonthKey(cursor);
+      }
+    });
+    return changed;
+  }
 
   // ---------- Grafico ore più produttive ----------
   const HOURLY_CHART_MIN_DATE = '2026-07-11';
@@ -4597,6 +4657,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   const overlay = document.getElementById('overlay');
   let formKind='entrata', formTipo='radio', formMetodo='carta', formAltroCat='carburante';
   let editingEntryId = null;
+  let formLinkedRicorrenzaId = null;
 
   function openEntrySheet(existingEntry, defaultKind){
     editingEntryId = existingEntry ? existingEntry.id : null;
@@ -4623,6 +4684,41 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.querySelectorAll('#metodoChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.metodo===formMetodo));
     document.getElementById('tipoChips').style.display = formKind==='entrata' ? 'flex' : 'none';
     document.getElementById('altroCatRow').style.display = formKind==='spesa' ? 'block' : 'none';
+
+    // Riquadro spesa ricorrente: solo per le spese.
+    document.getElementById('ricorrenteRow').style.display = formKind==='spesa' ? 'block' : 'none';
+    formLinkedRicorrenzaId = (existingEntry && existingEntry.ricorrenzaId) ? existingEntry.ricorrenzaId : null;
+    const checkRow = document.getElementById('ricorrenteCheckRow');
+    const infoBox = document.getElementById('ricorrenteInfoBox');
+    document.getElementById('ricorrenteCheck').checked = false;
+    if(formLinkedRicorrenzaId){
+      const r = (state.speseRicorrenti||[]).find(x=>x.id===formLinkedRicorrenzaId);
+      checkRow.style.display = 'none';
+      infoBox.style.display = 'block';
+      if(r){
+        infoBox.innerHTML = `<div style="padding:10px 12px; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; font-size:13px; color:var(--ink);">
+          🔁 Fa parte di una spesa ricorrente${r.attiva?'':' <b>(disattivata)</b>'}, dal ${meseLabel(r.meseInizio)}.
+          ${r.attiva?'<button id="disattivaRicorrenzaBtn" style="margin-top:8px; display:block; background:none; border:1px solid var(--border); border-radius:7px; padding:6px 10px; color:var(--ink-muted); cursor:pointer; font-size:12.5px;">Disattiva ricorrenza</button>':''}
+        </div>`;
+        const btn = document.getElementById('disattivaRicorrenzaBtn');
+        if(btn) btn.addEventListener('click', async (ev)=>{
+          ev.preventDefault();
+          const ok = await askConfirm('Disattivare la ricorrenza?', 'I mesi già generati restano invariati. Da qui in avanti non verrà più creata automaticamente.', 'Disattiva');
+          if(!ok) return;
+          r.attiva = false;
+          await saveState();
+          openEntrySheet(existingEntry, defaultKind); // ridisegna il box con lo stato aggiornato
+          showToast('Ricorrenza disattivata');
+        });
+      } else {
+        infoBox.innerHTML = '';
+      }
+    } else {
+      checkRow.style.display = 'flex';
+      infoBox.style.display = 'none';
+      infoBox.innerHTML = '';
+    }
+
     overlay.classList.add('show');
     autoGrow(document.getElementById('noteInput'));
     if(!existingEntry) setTimeout(()=>document.getElementById('amtInput').focus(), 250);
@@ -4680,6 +4776,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       document.querySelectorAll('#kindChips .chip').forEach(c=>c.classList.toggle('active', c===chip));
       document.getElementById('tipoChips').style.display = formKind==='entrata' ? 'flex' : 'none';
       document.getElementById('altroCatRow').style.display = formKind==='spesa' ? 'block' : 'none';
+      document.getElementById('ricorrenteRow').style.display = formKind==='spesa' ? 'block' : 'none';
     });
   });
   document.querySelectorAll('#tipoChips .chip').forEach(chip=>{
@@ -4704,6 +4801,21 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       time: document.getElementById('timeInput').value || nowTimeStr(),
       nota: document.getElementById('noteInput').value.trim()
     };
+    if(formKind==='spesa'){
+      if(formLinkedRicorrenzaId){
+        payload.ricorrenzaId = formLinkedRicorrenzaId;
+      } else if(document.getElementById('ricorrenteCheck').checked){
+        const rid = 'ric-'+Date.now();
+        const meseInizio = monthKey(viewDate);
+        const giorno = viewDate.getDate();
+        if(!state.speseRicorrenti) state.speseRicorrenti = [];
+        state.speseRicorrenti.push({
+          id: rid, sottocategoria: formAltroCat, metodo: formMetodo, importo: amt,
+          giorno, attiva: true, meseInizio, meseUltimaGenerazione: meseInizio, createdAt: Date.now()
+        });
+        payload.ricorrenzaId = rid;
+      }
+    }
     if(editingEntryId){
       const idx = d.entries.findIndex(e=>e.id===editingEntryId);
       if(idx>=0) d.entries[idx] = Object.assign({id: editingEntryId}, payload);
@@ -4711,9 +4823,10 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       d.entries.push(Object.assign({id: uid()}, payload));
     }
     const wasEditing = !!editingEntryId;
+    const nuovaRicorrenza = !formLinkedRicorrenzaId && !!payload.ricorrenzaId;
     await saveState(); closeEntrySheet();
     if(activeTab!=='oggi') document.querySelector('.tabs button[data-tab="oggi"]').click(); else renderMain();
-    showToast(wasEditing ? 'Voce aggiornata' : 'Voce salvata');
+    showToast(nuovaRicorrenza ? 'Voce salvata: ripetuta ogni mese da ora in poi' : (wasEditing ? 'Voce aggiornata' : 'Voce salvata'));
   });
 
   // ---------- Deadline sheet ----------
@@ -4967,7 +5080,47 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     } else {
       accSec.style.display = 'none';
     }
+    renderRicorrentiList();
     overlaySet.classList.add('show');
+  }
+  function renderRicorrentiList(){
+    const box = document.getElementById('ricorrentiListBox');
+    const list = state.speseRicorrenti||[];
+    if(list.length===0){
+      box.innerHTML = `<div class="subnote">Nessuna spesa ricorrente ancora. Puoi crearne una spuntando "Spesa ricorrente" quando aggiungi una spesa.</div>`;
+      return;
+    }
+    box.innerHTML = '';
+    [...list].sort((a,b)=> b.createdAt-a.createdAt).forEach(r=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border);';
+      const label = CATEGORIA_LABEL[r.sottocategoria] || r.sottocategoria || 'Spesa';
+      const metodoLbl = METODO_LABEL[r.metodo] || r.metodo;
+      const info = document.createElement('div');
+      info.innerHTML = `<div style="font-weight:600; font-size:14px; color:var(--ink);">${escapeHtml(label)} · ${fmtMoney(r.importo)} €/mese</div>
+        <div class="subnote" style="margin-top:2px;">${metodoLbl} · giorno ${r.giorno} · dal ${meseLabel(r.meseInizio)}${!r.attiva?' · <b>disattivata</b>':''}</div>`;
+      const toggle = document.createElement('input');
+      toggle.type='checkbox'; toggle.checked = !!r.attiva;
+      toggle.style.cssText = 'width:22px; height:22px; flex:none; accent-color:var(--amber-line); cursor:pointer;';
+      toggle.addEventListener('click', async (ev)=>{
+        ev.stopPropagation();
+        if(r.attiva){
+          const ok = await askConfirm('Disattivare la ricorrenza?', 'I mesi già generati restano invariati. Da qui in avanti non verrà più creata automaticamente.', 'Disattiva');
+          if(!ok){ toggle.checked = true; return; }
+          r.attiva = false;
+        } else {
+          r.attiva = true;
+          // riprende a generare dal mese successivo all'ultima generazione, senza saltare mesi non ancora arrivati
+        }
+        await saveState();
+        if(generaSpeseRicorrenti()) await saveState();
+        renderRicorrentiList();
+        renderMain();
+      });
+      row.appendChild(info);
+      row.appendChild(toggle);
+      box.appendChild(row);
+    });
   }
   const _logoutBtn = document.getElementById('logoutBtn');
   if(_logoutBtn) _logoutBtn.addEventListener('click', ()=>{ if(window.taxiLogout) window.taxiLogout(); });
@@ -5069,6 +5222,11 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(!state.pagamenti) state.pagamenti = [];
     const pagIds = new Set(state.pagamenti.map(x=>x.id));
     (parsed.pagamenti||[]).forEach(x=>{ if(x && !pagIds.has(x.id)){ state.pagamenti.push(x); pagIds.add(x.id); addPag++; } });
+    // Spese ricorrenti: dedup per id.
+    let addRic=0;
+    if(!state.speseRicorrenti) state.speseRicorrenti = [];
+    const ricIds = new Set(state.speseRicorrenti.map(x=>x.id));
+    (parsed.speseRicorrenti||[]).forEach(x=>{ if(x && !ricIds.has(x.id)){ state.speseRicorrenti.push(x); ricIds.add(x.id); addRic++; } });
     // Eventi: unisco per data, senza duplicare (dedup per nome).
     let addEv=0;
     if(parsed.eventi && typeof parsed.eventi==='object'){
