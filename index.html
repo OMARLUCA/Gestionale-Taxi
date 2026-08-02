@@ -1297,7 +1297,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -1338,6 +1338,7 @@
     state.deadlines = parsed.deadlines || [];
     state.reports = parsed.reports || [];
     state.scansioni = parsed.scansioni || [];
+    state.eventi = parsed.eventi || {};
     state.updatedAt = parsed.updatedAt || null;
     state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
     state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
@@ -4109,6 +4110,240 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
 
   // ---------- Main render ----------
+  // ===================== Bacheca eventi (import PDF calendario) =====================
+  const MESI_IT = { 'gennaio':1,'febbraio':2,'marzo':3,'aprile':4,'maggio':5,'giugno':6,'luglio':7,'agosto':8,'settembre':9,'ottobre':10,'novembre':11,'dicembre':12 };
+  let _pdfjsPromise = null;
+  function loadPdfJs(){
+    if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+    if(_pdfjsPromise) return _pdfjsPromise;
+    _pdfjsPromise = new Promise((resolve,reject)=>{
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = ()=>{
+        try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; }catch(e){}
+        resolve(window.pdfjsLib);
+      };
+      s.onload2 = s.onload;
+      s.onerror = ()=>reject(new Error('pdfjs load failed'));
+      document.head.appendChild(s);
+    });
+    return _pdfjsPromise;
+  }
+
+  // Espande una stringa data (colonna sinistra) in una lista di chiavi YYYY-MM-DD.
+  // Gestisce: "5 - 7 maggio", "11 giugno", "29 - 30 - 31 agosto", "29 maggio - 2 giugno".
+  function parseDataRange(str, annoDefault){
+    str = (str||'').replace(/\s+/g,' ').trim().toLowerCase();
+    // trova tutti i mesi citati con la loro posizione
+    const mesiTrovati = [];
+    Object.keys(MESI_IT).forEach(m=>{ let i=str.indexOf(m); while(i>=0){ mesiTrovati.push({mese:MESI_IT[m], pos:i}); i=str.indexOf(m,i+1); } });
+    if(mesiTrovati.length===0) return [];
+    mesiTrovati.sort((a,b)=>a.pos-b.pos);
+    const anno = annoDefault;
+    // Caso semplice: un solo mese. Prendo tutti i numeri e li associo a quel mese.
+    if(mesiTrovati.length===1){
+      const mese = mesiTrovati[0].mese;
+      const nums = (str.match(/\d+/g)||[]).map(Number).filter(n=>n>=1&&n<=31);
+      if(nums.length===0) return [];
+      // range con trattino tra due numeri: es "5 - 7"
+      if(/\d+\s*-\s*\d+/.test(str) && nums.length===2){
+        const out=[]; for(let d=nums[0]; d<=nums[1]; d++) out.push(mkKey(anno,mese,d)); return out;
+      }
+      // elenco di giorni: "29 - 30 - 31" o "1 - 2"
+      return nums.map(d=>mkKey(anno,mese,d));
+    }
+    // Due mesi (attraversa il confine): "29 maggio - 2 giugno".
+    // Segmento prima del primo mese -> primo mese; dopo -> secondo mese.
+    const m1 = mesiTrovati[0], m2 = mesiTrovati[1];
+    const parte1 = str.slice(0, m1.pos);
+    const parte2 = str.slice(m1.pos, m2.pos);
+    const g1 = (parte1.match(/\d+/g)||[]).map(Number).filter(n=>n>=1&&n<=31);
+    const g2 = (parte2.match(/\d+/g)||[]).map(Number).filter(n=>n>=1&&n<=31);
+    const startDay = g1.length? g1[g1.length-1] : 1;
+    const endDay = g2.length? g2[0] : 1;
+    // costruisco range che attraversa i due mesi
+    const out=[];
+    let mm = m1.mese, aa = anno;
+    let d = startDay;
+    let guard = 0;
+    while(guard++ < 70){
+      out.push(mkKey(aa,mm,d));
+      if(mm===m2.mese && d===endDay) break;
+      const dim = new Date(aa, mm, 0).getDate();
+      d++;
+      if(d>dim){ d=1; mm++; if(mm>12){ mm=1; aa++; } }
+      if(mm>m2.mese && aa>=anno) break;
+    }
+    return out;
+  }
+  function mkKey(y,m,d){ return `${y}-${pad(m)}-${pad(d)}`; }
+
+  // Riga di dettaglio (NON è un titolo evento) se inizia con queste parole chiave.
+  const RE_DETTAGLIO = /^(sede|ingress|ingresso|pad\b|padiglione|via |viale|porta |gate|allianz|level|orario|operatori|punto|largo|inizio|evento fier|manifestazione|fiera intern|bold ideas|the industrial|the art|european|international|turbomachinery|exposition|delle materie|agro|preregistr|\(prereg|dalle |in corsivo|organizzati|rev\b|\d+°|\d+\s*(?:gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre))/i;
+  function isDettaglio(t){ return RE_DETTAGLIO.test((t||'').trim()); }
+  // un titolo evento "vero" contiene almeno una lettera (non solo numeri/simboli)
+  function isTitoloValido(t){ return /[a-zA-Zàèéìòù]{3,}/.test(t||''); }
+
+  async function parseEventiPdf(arrayBuffer, annoDefault){
+    const pdfjs = await loadPdfJs();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    const dates = [];   // {gy, str}
+    const titlesRaw = [];  // {gy, str}
+    const details = []; // {gy, str}  (colonna centrale, righe di dettaglio)
+    const rights = [];  // {gy, str}  (colonna destra: orari)
+    let yoff = 0;
+    for(let pi=1; pi<=pdf.numPages; pi++){
+      const page = await pdf.getPage(pi);
+      const tc = await page.getTextContent();
+      const rowsMap = {};
+      tc.items.forEach(it=>{
+        const x = it.transform[4], y = Math.round(it.transform[5]);
+        const t = (it.str||'').trim(); if(!t) return;
+        (rowsMap[y] = rowsMap[y]||[]).push({x, t});
+      });
+      // In PDF y cresce verso l'alto: uso -y come coordinata "dall'alto in basso".
+      Object.keys(rowsMap).map(Number).forEach(y=>{
+        const gy = (-y) + yoff;
+        const items = rowsMap[y].sort((a,b)=>a.x-b.x);
+        const left = items.filter(i=>i.x<140).map(i=>i.t).join(' ').trim();
+        const mid  = items.filter(i=>i.x>=140 && i.x<393).map(i=>i.t).join(' ').trim();
+        const right= items.filter(i=>i.x>=393).map(i=>i.t).join(' ').trim();
+        if(left && /\d/.test(left) && Object.keys(MESI_IT).some(m=>left.toLowerCase().includes(m))){
+          dates.push({gy, str:left});
+        }
+        if(mid){
+          if(isDettaglio(mid)) details.push({gy, str:mid});
+          else titlesRaw.push({gy, str:mid});
+        }
+        if(right && !/^orario/i.test(right)) rights.push({gy, str:right});
+      });
+      yoff += 100000;
+    }
+    // Unisco righe di titolo consecutive (continuazione dello stesso titolo su più righe) in blocchi.
+    titlesRaw.sort((a,b)=>a.gy-b.gy);
+    const titleBlocks = []; // {gyStart, gyEnd, str}
+    titlesRaw.forEach(t=>{
+      if(!isTitoloValido(t.str)) return;
+      const last = titleBlocks[titleBlocks.length-1];
+      if(last && (t.gy-last.gyEnd)<=16){ last.gyEnd = t.gy; last.str += ' ' + t.str; }
+      else titleBlocks.push({gyStart:t.gy, gyEnd:t.gy, str:t.str});
+    });
+    // Accoppio ogni data col blocco titolo più vicino (distanza dal bordo più vicino del blocco).
+    const map = {};
+    dates.forEach(d=>{
+      let best=null, bestDist=1e12;
+      titleBlocks.forEach(b=>{
+        const dist = (d.gy>=b.gyStart-5 && d.gy<=b.gyEnd+5) ? 0 : Math.min(Math.abs(d.gy-b.gyStart), Math.abs(d.gy-b.gyEnd));
+        if(dist<bestDist){ bestDist=dist; best=b; }
+      });
+      if(!best || bestDist>70) return; // troppo lontano: nessun titolo associabile
+      const keys = parseDataRange(d.str, annoDefault);
+      if(keys.length===0) return;
+      const nearDetails = details.filter(x=>x.gy>=d.gy-20 && x.gy<=d.gy+90).map(x=>x.str);
+      const nearRights  = rights.filter(x=>x.gy>=d.gy-20 && x.gy<=d.gy+90).map(x=>x.str);
+      const sedeRaw = nearDetails.find(s=>/^sede/i.test(s)) || '';
+      const sede = sedeRaw.replace(/^sede:?\s*/i,'').trim();
+      const orario = nearRights.join(' · ').trim();
+      keys.forEach(k=>{
+        (map[k] = map[k]||[]).push({
+          nome: best.str.trim().replace(/\s+/g,' '),
+          sede: sede || null,
+          orario: orario || null,
+          periodo: d.str.trim()
+        });
+      });
+    });
+    // dedup per (giorno+nome)
+    Object.keys(map).forEach(k=>{
+      const seen=new Set(); map[k]=map[k].filter(e=>{ const key=e.nome.toLowerCase(); if(seen.has(key)) return false; seen.add(key); return true; });
+    });
+    return map;
+  }
+
+  // Deduce l'anno di riferimento dal nome file (es. "...AGOSTO_2026.pdf") o usa l'anno visualizzato.
+  function annoDaNomeFile(name){
+    const m = (name||'').match(/(20\d{2})/);
+    return m ? parseInt(m[1],10) : annoSelezionato;
+  }
+
+  async function importEventiFromFile(file){
+    const anno = annoDaNomeFile(file.name);
+    const buf = await file.arrayBuffer();
+    const map = await parseEventiPdf(buf, anno);
+    const giorni = Object.keys(map);
+    if(giorni.length===0){ showToast('Nessun evento riconosciuto nel PDF'); return; }
+    if(!state.eventi) state.eventi = {};
+    let nuovi=0;
+    giorni.forEach(k=>{
+      if(!state.eventi[k]) state.eventi[k] = [];
+      const names = new Set(state.eventi[k].map(e=>(e.nome||'').toLowerCase()));
+      map[k].forEach(ev=>{ if(!names.has(ev.nome.toLowerCase())){ state.eventi[k].push(ev); names.add(ev.nome.toLowerCase()); nuovi++; } });
+    });
+    await saveState();
+    renderMain();
+    showToast(`Importati ${nuovi} eventi su ${giorni.length} giorni`);
+  }
+
+  // Riquadro eventi del giorno nella tab Oggi.
+  function renderEventiCard(container, dayKey){
+    const card = document.createElement('div'); card.className='card';
+    const evts = (state.eventi && state.eventi[dayKey]) || [];
+    const head = document.createElement('div');
+    head.style.cssText='display:flex; align-items:center; justify-content:space-between; gap:8px;';
+    head.innerHTML = `<h2 style="margin:0;">📅 Eventi in città</h2>`;
+    const importBtn = document.createElement('button');
+    importBtn.className='mini-btn';
+    importBtn.textContent='＋ PDF';
+    importBtn.style.cssText='font-size:13px; padding:6px 12px; border-radius:8px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);';
+    head.appendChild(importBtn);
+    card.appendChild(head);
+
+    const fileInput = document.createElement('input');
+    fileInput.type='file'; fileInput.accept='.pdf,application/pdf'; fileInput.style.display='none';
+    card.appendChild(fileInput);
+    importBtn.addEventListener('click', ()=> fileInput.click());
+    fileInput.addEventListener('change', async (ev)=>{
+      const f = ev.target.files && ev.target.files[0]; ev.target.value='';
+      if(!f) return;
+      importBtn.textContent='…'; importBtn.disabled=true;
+      try{ await importEventiFromFile(f); }
+      catch(e){ console.error(e); showToast('Errore nella lettura del PDF'); }
+      finally{ importBtn.textContent='＋ PDF'; importBtn.disabled=false; }
+    });
+
+    const list = document.createElement('div');
+    list.style.cssText='margin-top:10px;';
+    if(evts.length===0){
+      list.innerHTML = `<div class="subnote">Nessun evento per oggi. Tocca “＋ PDF” per importare il calendario mensile di Fiera Milano.</div>`;
+    } else {
+      evts.forEach(ev=>{
+        const row = document.createElement('div');
+        row.style.cssText='padding:10px 12px; margin-bottom:8px; background:var(--surface-2); border:1px solid var(--border); border-left:3px solid var(--amber-line); border-radius:9px;';
+        let html = `<div style="font-weight:700; font-size:15px; color:var(--ink);">${escapeHtml(ev.nome)}</div>`;
+        if(ev.sede) html += `<div style="font-size:13px; color:var(--ink-muted); margin-top:2px;">📍 ${escapeHtml(ev.sede)}</div>`;
+        if(ev.orario) html += `<div style="font-size:13px; color:var(--ink-muted); margin-top:2px;">🕐 ${escapeHtml(ev.orario)}</div>`;
+        if(ev.periodo) html += `<div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">${escapeHtml(ev.periodo)}</div>`;
+        row.innerHTML = html;
+        // rimozione singolo evento con long-press / doppio tap: uso un pulsantino
+        const del = document.createElement('button');
+        del.textContent='✕'; del.title='Rimuovi';
+        del.style.cssText='float:right; background:none; border:none; color:var(--ink-faint); font-size:14px; cursor:pointer; margin-top:-2px;';
+        del.addEventListener('click', async ()=>{
+          const ok = await askConfirm('Rimuovere l\'evento?', escapeHtml(ev.nome), 'Rimuovi');
+          if(!ok) return;
+          state.eventi[dayKey] = state.eventi[dayKey].filter(x=>x!==ev);
+          if(state.eventi[dayKey].length===0) delete state.eventi[dayKey];
+          await saveState(); renderMain();
+        });
+        row.insertBefore(del, row.firstChild);
+        list.appendChild(row);
+      });
+    }
+    card.appendChild(list);
+    container.appendChild(card);
+  }
+  // ===================== fine Bacheca eventi =====================
+
   function renderMain(){
     renderHeader();
     const main = document.getElementById('mainArea');
@@ -4122,6 +4357,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(activeTab==='oggi'){
       renderScadenzeAlert(main);
       renderShiftCapsule(main, dayKey, day, isToday);
+      renderEventiCard(main, dayKey);
       renderQuickAddRow(main, dayKey);
       renderEntriesCard(main, dayKey, day, false);
       renderHourlyProductivityCard(main);
@@ -4606,6 +4842,17 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     (parsed.reports||[]).forEach(x=>{ if(x && !repIds.has(x.id)){ state.reports.push(x); repIds.add(x.id); addRep++; } });
     const scanIds = new Set((state.scansioni||[]).map(x=>x.id));
     (parsed.scansioni||[]).forEach(x=>{ if(x && !scanIds.has(x.id)){ state.scansioni.push(x); scanIds.add(x.id); addScan++; } });
+    // Eventi: unisco per data, senza duplicare (dedup per nome).
+    let addEv=0;
+    if(parsed.eventi && typeof parsed.eventi==='object'){
+      if(!state.eventi) state.eventi = {};
+      Object.keys(parsed.eventi).forEach(dk=>{
+        const arr = parsed.eventi[dk]; if(!Array.isArray(arr)) return;
+        if(!state.eventi[dk]) state.eventi[dk] = [];
+        const names = new Set(state.eventi[dk].map(e=>(e.nome||'').toLowerCase()));
+        arr.forEach(e=>{ if(e && !names.has((e.nome||'').toLowerCase())){ state.eventi[dk].push(e); names.add((e.nome||'').toLowerCase()); addEv++; } });
+      });
+    }
     await saveState();
     renderMain();
     showToast(`Importati: ${addDays} giorni, ${addDl} scadenze, ${addRep} report, ${addScan} scansioni`);
