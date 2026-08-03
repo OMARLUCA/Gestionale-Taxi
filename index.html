@@ -4822,6 +4822,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     } else {
       d.entries.push(Object.assign({id: uid()}, payload));
     }
+    // Se ho appena creato una ricorrenza che parte da un mese passato, recupero subito
+    // i mesi già trascorsi fino ad oggi, senza aspettare il prossimo avvio dell'app.
+    generaSpeseRicorrenti();
     const wasEditing = !!editingEntryId;
     const nuovaRicorrenza = !formLinkedRicorrenzaId && !!payload.ricorrenzaId;
     await saveState(); closeEntrySheet();
