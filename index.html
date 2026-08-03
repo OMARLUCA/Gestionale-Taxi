@@ -609,6 +609,7 @@
       <div class="chip" data-metodo="aggeggio">MyPos</div>
       <div class="chip" data-metodo="buoni">Buoni</div>
       <div class="chip" data-metodo="satispay">Satispay</div>
+      <div class="chip" data-metodo="bonifico">Bonifico</div>
     </div>
     <div class="form-row"><label>Ora</label><input type="time" id="timeInput"></div>
     <div class="form-row"><label>Nota (opzionale)</label><textarea id="noteInput" rows="1" placeholder="es. cliente aeroporto..."></textarea></div>
@@ -1234,7 +1235,7 @@
   const MESI = ['gen','feb','mar','apr','mag','giu','lug','ago','set','ott','nov','dic'];
   const MESI_FULL = ['gennaio','febbraio','marzo','aprile','maggio','giugno','luglio','agosto','settembre','ottobre','novembre','dicembre'];
   const GIORNI = ['dom','lun','mar','mer','gio','ven','sab'];
-  const METODI = ['carta','contanti','app','globix','centrale','aggeggio','buoni','satispay'];
+  const METODI = ['carta','contanti','app','globix','centrale','aggeggio','buoni','satispay','bonifico'];
   const METODI_ELETTRONICI = ['carta','globix','centrale','buoni','app'];
   const MOTIVO_LABELS = { riposo:'Riposo', ferie:'Ferie', guasto_tecnico:'Guasto tecnico', malattia:'Malattia' };
 
@@ -1275,7 +1276,7 @@
     });
     container.appendChild(card3);
   }
-  const METODO_LABEL = { carta:'Carta', contanti:'Contanti', app:'App', globix:'Globix', centrale:'Importo centrale', aggeggio:'MyPos', buoni:'Buoni', satispay:'Satispay' };
+  const METODO_LABEL = { carta:'Carta', contanti:'Contanti', app:'App', globix:'Globix', centrale:'Importo centrale', aggeggio:'MyPos', buoni:'Buoni', satispay:'Satispay', bonifico:'Bonifico' };
 
   function pad(n){ return String(n).padStart(2,'0'); }
   function dateKey(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
@@ -1312,7 +1313,7 @@
 
   // ---------- Default settings ----------
   const DEFAULT_SETTINGS = {
-    tracciato: { contanti:false, aggeggio:false, carta:true, centrale:true, buoni:true, globix:true, satispay:true, app:true },
+    tracciato: { contanti:false, aggeggio:false, carta:true, centrale:true, buoni:true, globix:true, satispay:true, app:true, bonifico:true },
     coeffRedditivita: 67,
     aliquotaSostitutiva: 15,
     inpsGestione: 'commercianti',
@@ -5162,6 +5163,23 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       });
       row.appendChild(info);
       row.appendChild(toggle);
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '🗑'; delBtn.title = 'Elimina definizione';
+      delBtn.style.cssText = 'background:none; border:none; font-size:17px; cursor:pointer; flex:none; padding:2px 4px;';
+      delBtn.addEventListener('click', async (ev)=>{
+        ev.stopPropagation();
+        const ok = await askConfirm(
+          'Eliminare questa spesa ricorrente?',
+          'Smetterà di generare nuove spese ogni mese. Le spese già create nei mesi passati NON vengono toccate: restano tra le tue spese normali, da eliminare a mano una per una se non le vuoi più.',
+          'Elimina'
+        );
+        if(!ok) return;
+        state.speseRicorrenti = state.speseRicorrenti.filter(x=>x.id!==r.id);
+        await saveState();
+        renderRicorrentiList();
+        renderMain();
+      });
+      row.appendChild(delBtn);
       box.appendChild(row);
     });
   }
