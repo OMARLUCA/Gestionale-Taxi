@@ -591,6 +591,7 @@
         <option value="rata_autoveicolo">Rata Autoveicolo</option>
         <option value="ristorazione">Ristorazione</option>
         <option value="servizi_vari">Servizi vari</option>
+        <option value="telefono">Telefono</option>
       </select>
     </div>
     <div class="form-row" id="ricorrenteRow" style="display:none;">
@@ -748,6 +749,11 @@
       <h4>Regime forfettario</h4>
       <div class="input-row"><label>Coefficiente redditività (%)</label><input type="number" id="setCoeff"></div>
       <div class="input-row"><label>Imposta sostitutiva (%)</label><input type="number" id="setSostitutiva"></div>
+      <div class="method-toggle-row">
+        <span class="name">Regime di vantaggio (primi 5 anni, aliquota 5%)</span>
+        <label class="switch"><input type="checkbox" id="setVantaggio5"><span class="track"></span><span class="thumb"></span></label>
+      </div>
+      <div class="subnote">Se attivo, usa il 5% al posto dell'imposta sostitutiva impostata sopra.</div>
     </div>
 
     <div class="settings-section">
@@ -771,6 +777,22 @@
       <h4>Spese mediche</h4>
       <div class="input-row"><label>Franchigia non detraibile (€)</label><input type="number" id="setFranchigia"></div>
       <div class="input-row"><label>% detrazione</label><input type="number" id="setDetrMed"></div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Addizionale regionale IRPEF</h4>
+      <div class="method-toggle-row">
+        <span class="name">Applica addizionale regionale</span>
+        <label class="switch"><input type="checkbox" id="setAddRegAttiva"><span class="track"></span><span class="thumb"></span></label>
+      </div>
+      <div class="input-row"><label>Aliquota (%)</label><input type="number" step="0.01" id="setAddRegPerc"></div>
+      <div class="subnote">Varia per regione (in Lombardia 1,23%–1,73% a scaglioni). Si applica solo nel regime ordinario: il forfettario ne è esente per legge. Aggiorna la percentuale se cambia nella tua regione.</div>
+    </div>
+
+    <div class="settings-section">
+      <h4>Diritto camerale</h4>
+      <div class="input-row"><label>Quota annuale (€)</label><input type="number" step="0.01" id="setCamerale"></div>
+      <div class="subnote">Dovuto in entrambi i regimi. Nell'ordinario è anche deducibile dalla base imponibile.</div>
     </div>
 
     <div class="settings-section">
@@ -1316,19 +1338,23 @@
     tracciato: { contanti:false, aggeggio:false, carta:true, centrale:true, buoni:true, globix:true, satispay:true, app:true, bonifico:true },
     coeffRedditivita: 67,
     aliquotaSostitutiva: 15,
+    regimeVantaggio5: false,
     inpsGestione: 'commercianti',
-    inpsFisso: 4549.70,
+    inpsFisso: 4611.64,
     inpsMinimale: 18808,
     inpsAliquotaEcc: 24.48,
     inpsRiduzione35: true,
     franchigiaMediche: 129.11,
     detrMedichePerc: 19,
+    dirittoCamerale: 53,
+    addRegionaleAttiva: false,
+    addRegionalePerc: 1.73,
     scanAnagrafica: { nome:'', sigla:'', seriale:'', iban:'' },
     registro: { conducente:'', indirizzo:'', citta:'', vettura1:'', targa1:'', civ1:'', alim1:'', vettura2:'', targa2:'', civ2:'', alim2:'', codUtente:'', intestazione:true }
   };
   const GESTIONE_DEFAULTS = {
-    commercianti: { fisso: 4549.70, aliquotaEcc: 24.48 },
-    artigiani: { fisso: 4460.64, aliquotaEcc: 24.00 }
+    commercianti: { fisso: 4611.64, aliquotaEcc: 24.48 },
+    artigiani: { fisso: 4521.36, aliquotaEcc: 24.00 }
   };
 
   // ---------- State ----------
@@ -1355,12 +1381,13 @@
     return state.months[key];
   }
   function getYearReadonly(key){
-    const defaults = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 };
+    const defaults = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0, ammortamentoAutoveicolo:0 };
     return state.years[key] ? Object.assign({}, defaults, state.years[key]) : defaults;
   }
   function ensureYear(key){
-    if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 };
+    if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0, ammortamentoAutoveicolo:0 };
     if(typeof state.years[key].speseMediche!=='number') state.years[key].speseMediche = 0;
+    if(typeof state.years[key].ammortamentoAutoveicolo!=='number') state.years[key].ammortamentoAutoveicolo = 0;
     return state.years[key];
   }
   function kmInizioEffettivo(year){
@@ -1407,6 +1434,18 @@
       state.migratedSpeseMedicheAnnuali = true;
     } else {
       state.migratedSpeseMedicheAnnuali = true;
+    }
+    // Migrazione: contributo fisso INPS aggiornato ai valori 2026 (circolare INPS n.14/2026).
+    // Aggiorno solo se il valore salvato è ancora quello vecchio (cioè non è mai stato personalizzato a mano).
+    if(!parsed.migratedInpsFisso2026){
+      const vecchi = { commercianti:4549.70, artigiani:4460.64 };
+      const gestioneAttuale = state.settings.inpsGestione;
+      if(vecchi[gestioneAttuale] && Math.abs(state.settings.inpsFisso - vecchi[gestioneAttuale]) < 0.01){
+        state.settings.inpsFisso = GESTIONE_DEFAULTS[gestioneAttuale].fisso;
+      }
+      state.migratedInpsFisso2026 = true;
+    } else {
+      state.migratedInpsFisso2026 = true;
     }
   }
   async function loadState(){
@@ -1891,7 +1930,7 @@
   const CATEGORIA_LABEL = {
     assicurazione:'Assicurazione', cancelleria:'Cancelleria', canone_radio:'Canone Radio',
     canone_tassametro:'Canone Tassametro', carburante:'Carburante', gomme:'Gomme', lavaggi:'Lavaggi',
-    manutenzioni:'Manutenzioni', rata_autoveicolo:'Rata Autoveicolo', ristorazione:'Ristorazione', servizi_vari:'Servizi vari'
+    manutenzioni:'Manutenzioni', rata_autoveicolo:'Rata Autoveicolo', ristorazione:'Ristorazione', servizi_vari:'Servizi vari', telefono:'Telefono'
   };
   // Categoria di una spesa, compatibile col vecchio formato (tipo==='carburante' o sottocategoria)
   function spesaCategoria(e){
@@ -2316,31 +2355,48 @@
       altreSpeseTot += d.altreSpese;
     }
     const speseMedicheTot = getYearReadonly(`${year}`).speseMediche || 0;
+    const ammortamentoTot = getYearReadonly(`${year}`).ammortamentoAutoveicolo || 0;
     const s = state.settings;
     const cfgINPS = { fisso:s.inpsFisso, minimale:s.inpsMinimale, aliquotaEcc:s.inpsAliquotaEcc, riduzione35:s.inpsRiduzione35 };
+    const dirittoCamerale = s.dirittoCamerale || 0;
 
-    // Ordinario
-    const baseAnteInps = Math.max(0, dichiarazioneTot - carburanteDichTot - altreSpeseTot);
+    // Ordinario: il diritto camerale è un costo deducibile, come le altre spese.
+    const baseAnteInps = Math.max(0, dichiarazioneTot - carburanteDichTot - altreSpeseTot - ammortamentoTot - dirittoCamerale);
     const inpsOrdinario = calcINPS(baseAnteInps, cfgINPS);
     const redditoIrpef = Math.max(0, baseAnteInps - inpsOrdinario);
     const irpefLorda = calcIRPEF(redditoIrpef);
     const detrMed = (s.detrMedichePerc/100) * Math.max(0, speseMedicheTot - s.franchigiaMediche);
     const irpefNetta = Math.max(0, irpefLorda - detrMed);
-    const totaleOrdinario = irpefNetta + inpsOrdinario;
+    // Addizionale regionale: si applica solo nel regime ordinario (il forfettario ne è esente per legge).
+    const addRegionale = s.addRegionaleAttiva ? redditoIrpef * (s.addRegionalePerc/100) : 0;
+    // Il diritto camerale è dovuto in ogni caso, in entrambi i regimi: qui lo riaggiungo come costo reale da versare
+    // (nell'ordinario ha già ridotto l'imponibile sopra, ma va comunque pagato per intero).
+    const totaleOrdinario = irpefNetta + inpsOrdinario + addRegionale + dirittoCamerale;
 
-    // Forfettario
+    // Forfettario: nessuna spesa reale deducibile (il coefficiente di redditività le tiene già conto), niente addizionali.
+    const aliquotaForfEffettiva = s.regimeVantaggio5 ? 5 : s.aliquotaSostitutiva;
     const redditoForfAnte = dichiarazioneTot * (s.coeffRedditivita/100);
     const inpsForf = calcINPS(redditoForfAnte, cfgINPS);
     const redditoSostitutiva = Math.max(0, redditoForfAnte - inpsForf);
-    const impostaSostitutiva = (s.aliquotaSostitutiva/100) * redditoSostitutiva;
-    const totaleForf = impostaSostitutiva + inpsForf;
+    const impostaSostitutiva = (aliquotaForfEffettiva/100) * redditoSostitutiva;
+    const totaleForf = impostaSostitutiva + inpsForf + dirittoCamerale;
 
     const credito = getYearReadonly(`${year}`).creditoAnnoPrecedente || 0;
+    const sogliaForfettario = 85000;
+    const superaSoglia = dichiarazioneTot > sogliaForfettario;
+    const vicinoSoglia = !superaSoglia && dichiarazioneTot > sogliaForfettario*0.85;
+
+    // Acconti per l'anno successivo: stima semplificata al 100% dell'imposta+INPS eccedente di quest'anno,
+    // versati il 40% a giugno (insieme al saldo) e il 60% a novembre.
+    const accontoOrdinario = irpefNetta + inpsOrdinario + addRegionale;
+    const accontoForf = impostaSostitutiva + inpsForf;
+
 
     return {
-      dichiarazioneTot, carburanteDichTot, altreSpeseTot, speseMedicheTot, credito,
-      ordinario: { baseAnteInps, inps:inpsOrdinario, redditoIrpef, irpefLorda, detrMed, irpefNetta, totale:totaleOrdinario, totaleNetto:Math.max(0,totaleOrdinario-credito) },
-      forfettario: { redditoForfAnte, inps:inpsForf, redditoSostitutiva, impostaSostitutiva, totale:totaleForf, totaleNetto:Math.max(0,totaleForf-credito) }
+      dichiarazioneTot, carburanteDichTot, altreSpeseTot, speseMedicheTot, ammortamentoTot, credito,
+      dirittoCamerale, sogliaForfettario, superaSoglia, vicinoSoglia, aliquotaForfEffettiva,
+      ordinario: { baseAnteInps, inps:inpsOrdinario, redditoIrpef, irpefLorda, detrMed, irpefNetta, addRegionale, totale:totaleOrdinario, totaleNetto:Math.max(0,totaleOrdinario-credito), acconto:accontoOrdinario, accontoGiugno:accontoOrdinario*0.4, accontoNovembre:accontoOrdinario*0.6 },
+      forfettario: { redditoForfAnte, inps:inpsForf, redditoSostitutiva, impostaSostitutiva, totale:totaleForf, totaleNetto:Math.max(0,totaleForf-credito), acconto:accontoForf, accontoGiugno:accontoForf*0.4, accontoNovembre:accontoForf*0.6 }
     };
   }
 
@@ -3916,6 +3972,27 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       }, 500);
     });
 
+    const cAmm = document.createElement('div'); cAmm.className='card';
+    cAmm.innerHTML = `<h2>Ammortamento autoveicolo · anno ${year}</h2>`;
+    const yRecAmm = getYearReadonly(`${year}`);
+    const ammRow = document.createElement('div'); ammRow.className='input-row';
+    ammRow.innerHTML = `<label>Quota di ammortamento dell'anno</label><input type="number" step="1" id="ammInput" value="${yRecAmm.ammortamentoAutoveicolo.toFixed(2)}">`;
+    cAmm.appendChild(ammRow);
+    const ammNote = document.createElement('div'); ammNote.className='subnote';
+    ammNote.textContent = 'Dato annuale, calcolato dal commercialista in base al costo e al piano di ammortamento del veicolo. Riduce la base imponibile solo nel regime ordinario: nel forfettario non si deducono le spese reali.';
+    cAmm.appendChild(ammNote);
+    container.appendChild(cAmm);
+    let ammTO=null;
+    ammRow.querySelector('#ammInput').addEventListener('input', (e)=>{
+      const val = parseFloat(e.target.value);
+      clearTimeout(ammTO);
+      ammTO = setTimeout(async ()=>{
+        const yrec = ensureYear(`${year}`);
+        yrec.ammortamentoAutoveicolo = isNaN(val) ? 0 : val;
+        await saveState();
+      }, 500);
+    });
+
     // Annual comparison
     const ts = yearTaxSummary(year);
 
@@ -3987,11 +4064,27 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
     const c5 = document.createElement('div'); c5.className='card';
     c5.innerHTML = `<h2>Confronto regimi · anno ${year}</h2>`;
+    if(ts.superaSoglia){
+      const w = document.createElement('div'); w.className='disclaimer'; w.style.cssText='border-color:var(--red-line, #c4453b); color:var(--red, #c4453b);';
+      w.textContent = `Attenzione: la dichiarazione annua (${fmtMoney(ts.dichiarazioneTot)} €) supera la soglia di ${fmtMoney(ts.sogliaForfettario)} € per restare nel regime forfettario.`;
+      c5.appendChild(w);
+    } else if(ts.vicinoSoglia){
+      const w = document.createElement('div'); w.className='disclaimer';
+      w.textContent = `Ti stai avvicinando alla soglia di ${fmtMoney(ts.sogliaForfettario)} € per il regime forfettario (dichiarazione attuale: ${fmtMoney(ts.dichiarazioneTot)} €).`;
+      c5.appendChild(w);
+    }
     const toggle = document.createElement('div'); toggle.className='regime-toggle';
     toggle.innerHTML = `<button data-r="ordinario" class="${tasseRegime==='ordinario'?'active':''}">Ordinario</button>
       <button data-r="forfettario" class="${tasseRegime==='forfettario'?'active':''}">Forfettario</button>
       <button data-r="confronto" class="${tasseRegime==='confronto'?'active':''}">Entrambi</button>`;
     c5.appendChild(toggle);
+
+    function accontiRow(o, annoRif){
+      return `<div class="kv-row"><span class="k">Acconto ${annoRif+1} stimato (100%, semplificato)</span><span class="v">${fmtMoney(o.acconto)} €</span></div>
+        <div class="kv-row"><span class="k">− di cui a giugno ${annoRif+1} (40%)</span><span class="v">${fmtMoney(o.accontoGiugno)} €</span></div>
+        <div class="kv-row"><span class="k">− di cui a novembre ${annoRif+1} (60%)</span><span class="v">${fmtMoney(o.accontoNovembre)} €</span></div>
+        <div class="subnote">A giugno ${annoRif+1} versi saldo ${annoRif} + primo acconto ${annoRif+1}; a novembre il secondo acconto. Stima semplificata al 100% del dovuto di quest'anno: verifica col commercialista se conviene il metodo previsionale.</div>`;
+    }
 
     function ordinarioBlock(){
       const o = ts.ordinario;
@@ -3999,15 +4092,21 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       el.innerHTML = `<div class="kv-row"><span class="k">Dichiarazione annua</span><span class="v">${fmtMoney(ts.dichiarazioneTot)} €</span></div>
         <div class="kv-row"><span class="k">− Carburante dichiarato</span><span class="v">${fmtMoney(ts.carburanteDichTot)} €</span></div>
         <div class="kv-row"><span class="k">− Altre spese</span><span class="v">${fmtMoney(ts.altreSpeseTot)} €</span></div>
+        <div class="kv-row"><span class="k">− Ammortamento autoveicolo</span><span class="v">${fmtMoney(ts.ammortamentoTot)} €</span></div>
+        <div class="kv-row"><span class="k">− Diritto camerale (deducibile)</span><span class="v">${fmtMoney(ts.dirittoCamerale)} €</span></div>
         <div class="kv-row"><span class="k">Base ante INPS</span><span class="v">${fmtMoney(o.baseAnteInps)} €</span></div>
         <div class="kv-row"><span class="k">Contributi INPS</span><span class="v">${fmtMoney(o.inps)} €</span></div>
         <div class="kv-row"><span class="k">Reddito imponibile IRPEF</span><span class="v">${fmtMoney(o.redditoIrpef)} €</span></div>
         <div class="kv-row"><span class="k">IRPEF lorda (scaglioni)</span><span class="v">${fmtMoney(o.irpefLorda)} €</span></div>
         <div class="kv-row"><span class="k">− Detrazione spese mediche 19%</span><span class="v">${fmtMoney(o.detrMed)} €</span></div>
         <div class="kv-row"><span class="k">IRPEF netta</span><span class="v">${fmtMoney(o.irpefNetta)} €</span></div>
-        <div class="kv-row total"><span class="k">Totale dovuto (IRPEF + INPS)</span><span class="v">${fmtMoney(o.totale)} €</span></div>
+        ${state.settings.addRegionaleAttiva ? `<div class="kv-row"><span class="k">+ Addizionale regionale ${state.settings.addRegionalePerc}%</span><span class="v">${fmtMoney(o.addRegionale)} €</span></div>` : ''}
+        <div class="kv-row"><span class="k">+ Diritto camerale (da versare)</span><span class="v">${fmtMoney(ts.dirittoCamerale)} €</span></div>
+        <div class="kv-row total"><span class="k">Totale dovuto</span><span class="v">${fmtMoney(o.totale)} €</span></div>
         ${ts.credito>0 ? `<div class="kv-row"><span class="k">− Credito ${year-1}</span><span class="v">${fmtMoney(ts.credito)} €</span></div>
-        <div class="kv-row total"><span class="k">Da versare al netto del credito</span><span class="v">${fmtMoney(o.totaleNetto)} €</span></div>` : ''}`;
+        <div class="kv-row total"><span class="k">Da versare al netto del credito</span><span class="v">${fmtMoney(o.totaleNetto)} €</span></div>` : ''}
+        <div class="subnote" style="margin-top:10px; font-weight:600; color:var(--ink);">Pianificazione acconti</div>
+        ${accontiRow(o, year)}`;
       return el;
     }
     function forfettarioBlock(){
@@ -4017,11 +4116,14 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         <div class="kv-row"><span class="k">× Coefficiente redditività ${state.settings.coeffRedditivita}%</span><span class="v">${fmtMoney(f.redditoForfAnte)} €</span></div>
         <div class="kv-row"><span class="k">Contributi INPS</span><span class="v">${fmtMoney(f.inps)} €</span></div>
         <div class="kv-row"><span class="k">Reddito netto imponibile</span><span class="v">${fmtMoney(f.redditoSostitutiva)} €</span></div>
-        <div class="kv-row"><span class="k">Imposta sostitutiva ${state.settings.aliquotaSostitutiva}%</span><span class="v">${fmtMoney(f.impostaSostitutiva)} €</span></div>
-        <div class="subnote">Nel forfettario le spese mediche non si detraggono: il coefficiente presume già i costi.</div>
-        <div class="kv-row total"><span class="k">Totale dovuto (imposta + INPS)</span><span class="v">${fmtMoney(f.totale)} €</span></div>
+        <div class="kv-row"><span class="k">Imposta sostitutiva ${ts.aliquotaForfEffettiva}%${state.settings.regimeVantaggio5?' (regime di vantaggio)':''}</span><span class="v">${fmtMoney(f.impostaSostitutiva)} €</span></div>
+        <div class="kv-row"><span class="k">+ Diritto camerale</span><span class="v">${fmtMoney(ts.dirittoCamerale)} €</span></div>
+        <div class="subnote">Nel forfettario le spese reali (incluso ammortamento) e le addizionali regionali/comunali non si applicano: il coefficiente presume già i costi.</div>
+        <div class="kv-row total"><span class="k">Totale dovuto</span><span class="v">${fmtMoney(f.totale)} €</span></div>
         ${ts.credito>0 ? `<div class="kv-row"><span class="k">− Credito ${year-1}</span><span class="v">${fmtMoney(ts.credito)} €</span></div>
-        <div class="kv-row total"><span class="k">Da versare al netto del credito</span><span class="v">${fmtMoney(f.totaleNetto)} €</span></div>` : ''}`;
+        <div class="kv-row total"><span class="k">Da versare al netto del credito</span><span class="v">${fmtMoney(f.totaleNetto)} €</span></div>` : ''}
+        <div class="subnote" style="margin-top:10px; font-weight:600; color:var(--ink);">Pianificazione acconti</div>
+        ${accontiRow(f, year)}`;
       return el;
     }
     const blockWrap = document.createElement('div'); blockWrap.style.marginTop='10px';
@@ -5106,6 +5208,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     buildMethodToggles();
     document.getElementById('setCoeff').value = state.settings.coeffRedditivita;
     document.getElementById('setSostitutiva').value = state.settings.aliquotaSostitutiva;
+    document.getElementById('setVantaggio5').checked = state.settings.regimeVantaggio5;
     document.getElementById('setGestione').value = state.settings.inpsGestione;
     document.getElementById('setFisso').value = state.settings.inpsFisso;
     document.getElementById('setMinimale').value = state.settings.inpsMinimale;
@@ -5113,6 +5216,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('setRiduzione').checked = state.settings.inpsRiduzione35;
     document.getElementById('setFranchigia').value = state.settings.franchigiaMediche;
     document.getElementById('setDetrMed').value = state.settings.detrMedichePerc;
+    document.getElementById('setAddRegAttiva').checked = state.settings.addRegionaleAttiva;
+    document.getElementById('setAddRegPerc').value = state.settings.addRegionalePerc;
+    document.getElementById('setCamerale').value = state.settings.dirittoCamerale;
     document.getElementById('setScanNome').value = state.settings.scanAnagrafica.nome;
     document.getElementById('setScanSigla').value = state.settings.scanAnagrafica.sigla;
     document.getElementById('setScanSeriale').value = state.settings.scanAnagrafica.seriale;
@@ -5388,6 +5494,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     });
     state.settings.coeffRedditivita = parseFloat(document.getElementById('setCoeff').value) || 0;
     state.settings.aliquotaSostitutiva = parseFloat(document.getElementById('setSostitutiva').value) || 0;
+    state.settings.regimeVantaggio5 = document.getElementById('setVantaggio5').checked;
     state.settings.inpsGestione = document.getElementById('setGestione').value;
     state.settings.inpsFisso = parseFloat(document.getElementById('setFisso').value) || 0;
     state.settings.inpsMinimale = parseFloat(document.getElementById('setMinimale').value) || 0;
@@ -5395,6 +5502,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     state.settings.inpsRiduzione35 = document.getElementById('setRiduzione').checked;
     state.settings.franchigiaMediche = parseFloat(document.getElementById('setFranchigia').value) || 0;
     state.settings.detrMedichePerc = parseFloat(document.getElementById('setDetrMed').value) || 0;
+    state.settings.addRegionaleAttiva = document.getElementById('setAddRegAttiva').checked;
+    state.settings.addRegionalePerc = parseFloat(document.getElementById('setAddRegPerc').value) || 0;
+    state.settings.dirittoCamerale = parseFloat(document.getElementById('setCamerale').value) || 0;
     state.settings.scanAnagrafica = {
       nome: document.getElementById('setScanNome').value.trim(),
       sigla: document.getElementById('setScanSigla').value.trim(),
