@@ -340,6 +340,13 @@
   .breakdown-row .val .pct{color:var(--ink-faint); margin-right:2px;}
 
   .kv-row{display:flex; justify-content:space-between; align-items:center; padding:7px 0; border-bottom:1px dashed var(--border); font-size:13px;}
+  .mes-table{width:100%;}
+  .mes-row{display:grid; grid-template-columns:36px 1fr 1fr 1fr; gap:6px; padding:7px 0; border-bottom:1px solid var(--border); font-size:12px; align-items:center;}
+  .mes-row span{text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .mes-row span.mm{text-align:left; font-weight:600; color:var(--ink-muted); text-transform:capitalize;}
+  .mes-head{font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; color:var(--ink-faint); font-weight:700; border-bottom:2px solid var(--border);}
+  .mes-head span.mm{text-transform:uppercase;}
+  .mes-total{font-weight:700; color:var(--ink); border-top:2px solid var(--border); border-bottom:none; margin-top:2px;}
   .kv-row:last-child{border-bottom:none;}
   .kv-row .k{color:var(--ink-muted);}
   .kv-row .v{font-family:'JetBrains Mono', monospace; font-weight:500;}
@@ -3804,9 +3811,41 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
 
   // ---------- Tasse tab ----------
+  // Riepilogo compatto di tutti i mesi dell'anno: incassi, spese e dichiarazione in sequenza.
+  function renderRiepilogoMensileTasse(container, year){
+    const card = document.createElement('div'); card.className='card';
+    card.innerHTML = `<h2>Riepilogo mensile · ${year}</h2>`;
+    const table = document.createElement('div'); table.className='mes-table';
+    table.innerHTML = `<div class="mes-row mes-head"><span class="mm">Mese</span><span>Incassi</span><span>Spese</span><span>Dich.</span></div>`;
+    let totIncassi=0, totSpese=0, totDich=0, righe=0;
+    for(let mo=0; mo<12; mo++){
+      const mk = `${year}-${pad(mo+1)}`;
+      const agg = aggregateEntries(mk);
+      const dd = monthDeclaration(mk);
+      if(agg.entrate===0 && agg.speseTot===0 && dd.dichiarazione===0) continue;
+      righe++;
+      totIncassi += agg.entrate; totSpese += agg.speseTot; totDich += dd.dichiarazione;
+      const row = document.createElement('div'); row.className='mes-row';
+      row.innerHTML = `<span class="mm">${MESI[mo]}</span><span>${fmtMoney(agg.entrate)} €</span><span>${fmtMoney(agg.speseTot)} €</span><span>${fmtMoney(dd.dichiarazione)} €</span>`;
+      table.appendChild(row);
+    }
+    if(righe===0){
+      const empty = document.createElement('div'); empty.className='subnote'; empty.style.padding='10px 0';
+      empty.textContent = `Nessun dato ancora per il ${year}.`;
+      table.appendChild(empty);
+    } else {
+      const totRow = document.createElement('div'); totRow.className='mes-row mes-total';
+      totRow.innerHTML = `<span class="mm">Tot.</span><span>${fmtMoney(totIncassi)} €</span><span>${fmtMoney(totSpese)} €</span><span>${fmtMoney(totDich)} €</span>`;
+      table.appendChild(totRow);
+    }
+    card.appendChild(table);
+    container.appendChild(card);
+  }
+
   function renderTasse(container){
     const mkey = monthKey(tasseMonth);
     const d = monthDeclaration(mkey);
+    const year = tasseMonth.getFullYear();
 
     const nav = document.createElement('div'); nav.className='month-nav';
     nav.innerHTML = `<button id="tPrev">‹</button><div class="lbl">${MESI_FULL[tasseMonth.getMonth()]} ${tasseMonth.getFullYear()}</div><button id="tNext">›</button>`;
@@ -3817,6 +3856,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const disc = document.createElement('div'); disc.className='disclaimer';
     disc.textContent = 'Stima semplificata per pianificare gli accantonamenti. Non sostituisce il commercialista: verifica sempre aliquote, gestione INPS e importi effettivi prima di dichiarare.';
     container.appendChild(disc);
+
+    renderRiepilogoMensileTasse(container, year);
 
     const c1 = document.createElement('div'); c1.className='card';
     c1.innerHTML = `<h2>Incassi del mese</h2>
@@ -3875,7 +3916,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     });
 
     // Annual comparison
-    const year = tasseMonth.getFullYear();
     const ts = yearTaxSummary(year);
 
     const yRec = getYearReadonly(`${year}`);
