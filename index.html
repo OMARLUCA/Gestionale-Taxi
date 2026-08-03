@@ -1353,7 +1353,10 @@
     if(typeof state.months[key].note!=='string') state.months[key].note = '';
     return state.months[key];
   }
-  function getYearReadonly(key){ return state.years[key] || { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 }; }
+  function getYearReadonly(key){
+    const defaults = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 };
+    return state.years[key] ? Object.assign({}, defaults, state.years[key]) : defaults;
+  }
   function ensureYear(key){
     if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 };
     if(typeof state.years[key].speseMediche!=='number') state.years[key].speseMediche = 0;
