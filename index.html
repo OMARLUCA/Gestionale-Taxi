@@ -1353,9 +1353,10 @@
     if(typeof state.months[key].note!=='string') state.months[key].note = '';
     return state.months[key];
   }
-  function getYearReadonly(key){ return state.years[key] || { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null }; }
+  function getYearReadonly(key){ return state.years[key] || { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 }; }
   function ensureYear(key){
-    if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null };
+    if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0 };
+    if(typeof state.years[key].speseMediche!=='number') state.years[key].speseMediche = 0;
     return state.years[key];
   }
   function kmInizioEffettivo(year){
@@ -1386,6 +1387,22 @@
       state.migratedAggeggio = true;
     } else {
       state.migratedAggeggio = true;
+    }
+    // Migrazione: le spese mediche erano mensili, ora sono un unico importo annuale.
+    // Sommo una sola volta quanto già inserito mese per mese nell'anno corrispondente, senza cancellare nulla.
+    if(!parsed.migratedSpeseMedicheAnnuali){
+      const perAnno = {};
+      Object.keys(state.months||{}).forEach(mkey=>{
+        const sm = state.months[mkey].speseMediche || 0;
+        if(sm>0){ const yr = mkey.slice(0,4); perAnno[yr] = (perAnno[yr]||0) + sm; }
+      });
+      Object.keys(perAnno).forEach(yr=>{
+        const yrec = ensureYear(yr);
+        yrec.speseMediche = (yrec.speseMediche||0) + perAnno[yr];
+      });
+      state.migratedSpeseMedicheAnnuali = true;
+    } else {
+      state.migratedSpeseMedicheAnnuali = true;
     }
   }
   async function loadState(){
@@ -2268,8 +2285,10 @@
     const s = state.settings;
     let minima = 0;
     METODI.forEach(m=>{ if(s.tracciato[m]) minima += agg.byMetodoEntrata[m]; });
-    const mrec = getMonthReadonly(mkey);
-    const dichiarazione = (typeof mrec.dichiarazioneOverride==='number' && mrec.dichiarazioneOverride>=0) ? mrec.dichiarazioneOverride : minima;
+    // La dichiarazione è la somma di ciò che risulta nel Registro corrispettivi giorno per giorno
+    // (comprese le correzioni manuali fatte lì): non è più un valore separato da editare qui.
+    let dichiarazione = 0;
+    Object.keys(state.days).forEach(dk=>{ if(dk.startsWith(mkey)) dichiarazione += corrispettivoEffettivoGiorno(dk); });
     const coefficiente = agg.carburanteReale>0 ? (agg.entrate/agg.carburanteReale) : null;
     const carburanteDichiarato = coefficiente ? (dichiarazione/coefficiente) : 0;
     return {
@@ -2279,21 +2298,20 @@
       carburanteReale: agg.carburanteReale,
       carburanteCartaReale: agg.carburanteCartaReale,
       coefficiente, carburanteDichiarato,
-      altreSpese: agg.altreSpese,
-      speseMediche: mrec.speseMediche || 0
+      altreSpese: agg.altreSpese
     };
   }
 
   function yearTaxSummary(year){
-    let dichiarazioneTot=0, carburanteDichTot=0, altreSpeseTot=0, speseMedicheTot=0;
+    let dichiarazioneTot=0, carburanteDichTot=0, altreSpeseTot=0;
     for(let mo=0; mo<12; mo++){
       const mkey = `${year}-${pad(mo+1)}`;
       const d = monthDeclaration(mkey);
       dichiarazioneTot += d.dichiarazione;
       carburanteDichTot += d.carburanteDichiarato;
       altreSpeseTot += d.altreSpese;
-      speseMedicheTot += d.speseMediche;
     }
+    const speseMedicheTot = getYearReadonly(`${year}`).speseMediche || 0;
     const s = state.settings;
     const cfgINPS = { fisso:s.inpsFisso, minimale:s.inpsMinimale, aliquotaEcc:s.inpsAliquotaEcc, riduzione35:s.inpsRiduzione35 };
 
@@ -3697,6 +3715,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
     const y = corrispettiviMonth.getFullYear(), m = corrispettiviMonth.getMonth();
     const daysInMonth = new Date(y, m+1, 0).getDate();
+    const mkeyC = `${y}-${pad(m+1)}`;
 
     let totSuggerito = 0, totEffettivo = 0, giorniModificati = 0;
     const rows = [];
@@ -3711,14 +3730,28 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       rows.push({ dk, date, sugg, eff, isOverride });
     }
 
+    const incassoRealeMese = aggregateEntries(mkeyC).entrate;
+    const contatoreCashMese = incassoRealeMese - totEffettivo;
     const totCard = document.createElement('div'); totCard.className='card';
     totCard.innerHTML = `<h2>Totale ${MESI_FULL[m]}</h2>
-      <div class="kv-row"><span class="k">Somma suggerita (da Corse)</span><span class="v">${fmtMoney(totSuggerito)} €</span></div>
+      <div class="kv-row"><span class="k">Incasso reale (tutti i metodi)</span><span class="v">${fmtMoney(incassoRealeMese)} €</span></div>
+      <div class="kv-row"><span class="k">Somma suggerita (da Corse tracciate)</span><span class="v">${fmtMoney(totSuggerito)} €</span></div>
       <div class="kv-row total"><span class="k">Totale corrispettivi effettivo</span><span class="v">${fmtMoney(totEffettivo)} €</span></div>
-      ${giorniModificati>0 ? `<div class="subnote">${giorniModificati} giorno/i corretti manualmente.</div>` : ''}`;
+      <div class="kv-row"><span class="k">Contatore contante a parte</span><span class="v">${fmtMoney(contatoreCashMese)} €</span></div>
+      ${giorniModificati>0 ? `<div class="subnote">${giorniModificati} giorno/i corretti manualmente.</div>` : ''}
+      <div class="subnote">Il "Totale corrispettivi effettivo" è ciò che risulta dichiarato per questo mese nella sezione Tasse: correggendo un giorno qui, si aggiorna anche lì.</div>`;
     container.appendChild(totCard);
 
-    const mkeyC = `${y}-${pad(m+1)}`;
+    const dCarb = monthDeclaration(mkeyC);
+    const carbCard = document.createElement('div'); carbCard.className='card';
+    carbCard.innerHTML = `<h2>Carburante</h2>
+      <div class="kv-row"><span class="k">Carburante reale (totale, usato nel calcolo)</span><span class="v">${fmtMoney(dCarb.carburanteReale)} €</span></div>
+      <div class="kv-row"><span class="k">− di cui pagato con carta</span><span class="v">${fmtMoney(dCarb.carburanteCartaReale)} €</span></div>
+      <div class="kv-row"><span class="k">Coefficiente incasso/carburante</span><span class="v">${dCarb.coefficiente ? dCarb.coefficiente.toFixed(2) : '—'}</span></div>
+      <div class="kv-row"><span class="k">Carburante da dichiarare</span><span class="v">${fmtMoney(dCarb.carburanteDichiarato)} €</span></div>
+      <div class="subnote">Coefficiente = incasso reale ÷ carburante totale (tutti i metodi). Il carburante da dichiarare è il totale corrispettivi effettivo diviso per quel coefficiente. Il dato "pagato con carta" è solo informativo, non entra nel calcolo.</div>`;
+    container.appendChild(carbCard);
+
     const mrecC = ensureMonth(mkeyC);
     const presenzeCalc = rows.filter(r=>r.eff>0).length;
     const ferieVal = rows.filter(r=> r.eff<=0 && getDayReadonly(r.dk).giornoMotivo==='ferie').length;
@@ -3843,15 +3876,14 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
 
   function renderTasse(container){
-    const mkey = monthKey(tasseMonth);
-    const d = monthDeclaration(mkey);
-    const year = tasseMonth.getFullYear();
+    const year = annoSelezionato;
 
     const nav = document.createElement('div'); nav.className='month-nav';
-    nav.innerHTML = `<button id="tPrev">‹</button><div class="lbl">${MESI_FULL[tasseMonth.getMonth()]} ${tasseMonth.getFullYear()}</div><button id="tNext">›</button>`;
+    nav.innerHTML = `<div class="lbl" style="margin:0 auto;">Anno ${year}</div>`;
     container.appendChild(nav);
-    nav.querySelector('#tPrev').addEventListener('click', ()=>{ tasseMonth.setMonth(tasseMonth.getMonth()-1); renderMain(); });
-    nav.querySelector('#tNext').addEventListener('click', ()=>{ tasseMonth.setMonth(tasseMonth.getMonth()+1); renderMain(); });
+    const navHint = document.createElement('div'); navHint.className='subnote'; navHint.style.cssText='text-align:center; margin-top:-6px; margin-bottom:10px;';
+    navHint.textContent = 'Per cambiare anno usa il selettore in alto nella schermata.';
+    container.appendChild(navHint);
 
     const disc = document.createElement('div'); disc.className='disclaimer';
     disc.textContent = 'Stima semplificata per pianificare gli accantonamenti. Non sostituisce il commercialista: verifica sempre aliquote, gestione INPS e importi effettivi prima di dichiarare.';
@@ -3859,58 +3891,23 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
     renderRiepilogoMensileTasse(container, year);
 
-    const c1 = document.createElement('div'); c1.className='card';
-    c1.innerHTML = `<h2>Incassi del mese</h2>
-      <div class="kv-row"><span class="k">Incasso reale</span><span class="v">${fmtMoney(d.incassoReale)} €</span></div>
-      <div class="kv-row"><span class="k">Contatore contante a parte</span><span class="v">${fmtMoney(d.contatoreCash)} €</span></div>
-      <div class="kv-row"><span class="k">Dichiarazione minima consigliata</span><span class="v">${fmtMoney(d.minima)} €</span></div>`;
-    container.appendChild(c1);
-
-    const c2 = document.createElement('div'); c2.className='card';
-    c2.innerHTML = `<h2>Dichiarazione effettiva</h2>`;
-    const editRow = document.createElement('div'); editRow.className='input-row';
-    editRow.innerHTML = `<label>Importo che vuoi dichiarare</label><input type="number" step="1" id="dichInput" value="${d.dichiarazione.toFixed(2)}">`;
-    c2.appendChild(editRow);
-    const warn = document.createElement('div'); warn.className='hint-min';
-    warn.textContent = `Minimo consigliato: ${fmtMoney(d.minima)} €. Puoi dichiarare di più, non meno.`;
-    c2.appendChild(warn);
-    container.appendChild(c2);
-
-    let dichTO=null;
-    editRow.querySelector('#dichInput').addEventListener('input', (e)=>{
-      const val = parseFloat(e.target.value);
-      warn.classList.toggle('warn', !isNaN(val) && val < d.minima);
-      clearTimeout(dichTO);
-      dichTO = setTimeout(async ()=>{
-        const mrec = ensureMonth(mkey);
-        mrec.dichiarazioneOverride = isNaN(val) ? null : val;
-        await saveState();
-      }, 500);
-    });
-
-    const c3 = document.createElement('div'); c3.className='card';
-    c3.innerHTML = `<h2>Carburante</h2>
-      <div class="kv-row"><span class="k">Carburante reale (totale, usato nel calcolo)</span><span class="v">${fmtMoney(d.carburanteReale)} €</span></div>
-      <div class="kv-row"><span class="k">− di cui pagato con carta</span><span class="v">${fmtMoney(d.carburanteCartaReale)} €</span></div>
-      <div class="kv-row"><span class="k">Coefficiente incasso/carburante</span><span class="v">${d.coefficiente ? d.coefficiente.toFixed(2) : '—'}</span></div>
-      <div class="kv-row"><span class="k">Carburante da dichiarare</span><span class="v">${fmtMoney(d.carburanteDichiarato)} €</span></div>
-      <div class="subnote">Coefficiente = incasso reale ÷ carburante totale (tutti i metodi). Il carburante da dichiarare è la dichiarazione effettiva divisa per quel coefficiente. Il dato "pagato con carta" è solo informativo, non entra nel calcolo.</div>`;
-    container.appendChild(c3);
-
-    const c4 = document.createElement('div'); c4.className='card';
-    c4.innerHTML = `<h2>Altre spese e spese mediche del mese</h2>
-      <div class="kv-row"><span class="k">Altre spese deducibili (voci "Altro")</span><span class="v">${fmtMoney(d.altreSpese)} €</span></div>`;
+    const cMed = document.createElement('div'); cMed.className='card';
+    cMed.innerHTML = `<h2>Spese mediche · anno ${year}</h2>`;
+    const yRecMed = getYearReadonly(`${year}`);
     const medRow = document.createElement('div'); medRow.className='input-row';
-    medRow.innerHTML = `<label>Spese mediche sostenute nel mese</label><input type="number" step="1" id="medInput" value="${d.speseMediche.toFixed(2)}">`;
-    c4.appendChild(medRow);
-    container.appendChild(c4);
+    medRow.innerHTML = `<label>Spese mediche sostenute nell'anno</label><input type="number" step="1" id="medInput" value="${yRecMed.speseMediche.toFixed(2)}">`;
+    cMed.appendChild(medRow);
+    const medNote = document.createElement('div'); medNote.className='subnote';
+    medNote.textContent = 'Un unico totale per l\'intero anno, non più da inserire mese per mese.';
+    cMed.appendChild(medNote);
+    container.appendChild(cMed);
     let medTO=null;
     medRow.querySelector('#medInput').addEventListener('input', (e)=>{
       const val = parseFloat(e.target.value);
       clearTimeout(medTO);
       medTO = setTimeout(async ()=>{
-        const mrec = ensureMonth(mkey);
-        mrec.speseMediche = isNaN(val) ? 0 : val;
+        const yrec = ensureYear(`${year}`);
+        yrec.speseMediche = isNaN(val) ? 0 : val;
         await saveState();
       }, 500);
     });
