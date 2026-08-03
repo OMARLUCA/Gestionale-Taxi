@@ -1381,13 +1381,14 @@
     return state.months[key];
   }
   function getYearReadonly(key){
-    const defaults = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0, ammortamentoAutoveicolo:0 };
+    const defaults = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0, ammortamentoAutoveicolo:0, accontiVersati:0 };
     return state.years[key] ? Object.assign({}, defaults, state.years[key]) : defaults;
   }
   function ensureYear(key){
-    if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0, ammortamentoAutoveicolo:0 };
+    if(!state.years[key]) state.years[key] = { creditoAnnoPrecedente:0, kmIniziale:null, kmFinale:null, speseMediche:0, ammortamentoAutoveicolo:0, accontiVersati:0 };
     if(typeof state.years[key].speseMediche!=='number') state.years[key].speseMediche = 0;
     if(typeof state.years[key].ammortamentoAutoveicolo!=='number') state.years[key].ammortamentoAutoveicolo = 0;
+    if(typeof state.years[key].accontiVersati!=='number') state.years[key].accontiVersati = 0;
     return state.years[key];
   }
   function kmInizioEffettivo(year){
@@ -2382,6 +2383,7 @@
     const totaleForf = impostaSostitutiva + inpsForf + dirittoCamerale;
 
     const credito = getYearReadonly(`${year}`).creditoAnnoPrecedente || 0;
+    const accontiVersati = getYearReadonly(`${year}`).accontiVersati || 0;
     const sogliaForfettario = 85000;
     const superaSoglia = dichiarazioneTot > sogliaForfettario;
     const vicinoSoglia = !superaSoglia && dichiarazioneTot > sogliaForfettario*0.85;
@@ -2393,10 +2395,10 @@
 
 
     return {
-      dichiarazioneTot, carburanteDichTot, altreSpeseTot, speseMedicheTot, ammortamentoTot, credito,
+      dichiarazioneTot, carburanteDichTot, altreSpeseTot, speseMedicheTot, ammortamentoTot, credito, accontiVersati,
       dirittoCamerale, sogliaForfettario, superaSoglia, vicinoSoglia, aliquotaForfEffettiva,
-      ordinario: { baseAnteInps, inps:inpsOrdinario, redditoIrpef, irpefLorda, detrMed, irpefNetta, addRegionale, totale:totaleOrdinario, totaleNetto:Math.max(0,totaleOrdinario-credito), acconto:accontoOrdinario, accontoGiugno:accontoOrdinario*0.4, accontoNovembre:accontoOrdinario*0.6 },
-      forfettario: { redditoForfAnte, inps:inpsForf, redditoSostitutiva, impostaSostitutiva, totale:totaleForf, totaleNetto:Math.max(0,totaleForf-credito), acconto:accontoForf, accontoGiugno:accontoForf*0.4, accontoNovembre:accontoForf*0.6 }
+      ordinario: { baseAnteInps, inps:inpsOrdinario, redditoIrpef, irpefLorda, detrMed, irpefNetta, addRegionale, totale:totaleOrdinario, totaleNetto:Math.max(0,totaleOrdinario-credito-accontiVersati), acconto:accontoOrdinario, accontoGiugno:accontoOrdinario*0.4, accontoNovembre:accontoOrdinario*0.6 },
+      forfettario: { redditoForfAnte, inps:inpsForf, redditoSostitutiva, impostaSostitutiva, totale:totaleForf, totaleNetto:Math.max(0,totaleForf-credito-accontiVersati), acconto:accontoForf, accontoGiugno:accontoForf*0.4, accontoNovembre:accontoForf*0.6 }
     };
   }
 
@@ -4062,6 +4064,26 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       }, 500);
     });
 
+    const c4d = document.createElement('div'); c4d.className='card';
+    c4d.innerHTML = `<h2>Acconti già versati nell'anno</h2>`;
+    const accVersRow = document.createElement('div'); accVersRow.className='input-row';
+    accVersRow.innerHTML = `<label>INPS e imposte già pagati con F24 nel ${year}</label><input type="number" step="1" id="accVersInput" value="${ts.accontiVersati.toFixed(2)}">`;
+    c4d.appendChild(accVersRow);
+    const accVersNote = document.createElement('div'); accVersNote.className='subnote';
+    accVersNote.textContent = `Diverso dal credito sopra: qui inserisci gli acconti regolarmente versati durante l'anno (di solito quelli indicati nella dichiarazione ${year-1}, salvo cambi importanti negli incassi). Anche questo viene scomputato dal totale dovuto.`;
+    c4d.appendChild(accVersNote);
+    container.appendChild(c4d);
+    let accVersTO=null;
+    accVersRow.querySelector('#accVersInput').addEventListener('input', (e)=>{
+      const val = parseFloat(e.target.value);
+      clearTimeout(accVersTO);
+      accVersTO = setTimeout(async ()=>{
+        const yrec = ensureYear(`${year}`);
+        yrec.accontiVersati = isNaN(val) ? 0 : Math.max(0,val);
+        await saveState();
+      }, 500);
+    });
+
     const c5 = document.createElement('div'); c5.className='card';
     c5.innerHTML = `<h2>Confronto regimi · anno ${year}</h2>`;
     if(ts.superaSoglia){
@@ -4085,6 +4107,14 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         <div class="kv-row"><span class="k">− di cui a novembre ${annoRif+1} (60%)</span><span class="v">${fmtMoney(o.accontoNovembre)} €</span></div>
         <div class="subnote">A giugno ${annoRif+1} versi saldo ${annoRif} + primo acconto ${annoRif+1}; a novembre il secondo acconto. Stima semplificata al 100% del dovuto di quest'anno: verifica col commercialista se conviene il metodo previsionale.</div>`;
     }
+    function nettoRow(o){
+      if(ts.credito<=0 && ts.accontiVersati<=0) return '';
+      let rows = '';
+      if(ts.credito>0) rows += `<div class="kv-row"><span class="k">− Credito ${year-1}</span><span class="v">${fmtMoney(ts.credito)} €</span></div>`;
+      if(ts.accontiVersati>0) rows += `<div class="kv-row"><span class="k">− Acconti già versati nel ${year}</span><span class="v">${fmtMoney(ts.accontiVersati)} €</span></div>`;
+      rows += `<div class="kv-row total"><span class="k">Da versare al saldo</span><span class="v">${fmtMoney(o.totaleNetto)} €</span></div>`;
+      return rows;
+    }
 
     function ordinarioBlock(){
       const o = ts.ordinario;
@@ -4103,8 +4133,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         ${state.settings.addRegionaleAttiva ? `<div class="kv-row"><span class="k">+ Addizionale regionale ${state.settings.addRegionalePerc}%</span><span class="v">${fmtMoney(o.addRegionale)} €</span></div>` : ''}
         <div class="kv-row"><span class="k">+ Diritto camerale (da versare)</span><span class="v">${fmtMoney(ts.dirittoCamerale)} €</span></div>
         <div class="kv-row total"><span class="k">Totale dovuto</span><span class="v">${fmtMoney(o.totale)} €</span></div>
-        ${ts.credito>0 ? `<div class="kv-row"><span class="k">− Credito ${year-1}</span><span class="v">${fmtMoney(ts.credito)} €</span></div>
-        <div class="kv-row total"><span class="k">Da versare al netto del credito</span><span class="v">${fmtMoney(o.totaleNetto)} €</span></div>` : ''}
+        ${nettoRow(o)}
         <div class="subnote" style="margin-top:10px; font-weight:600; color:var(--ink);">Pianificazione acconti</div>
         ${accontiRow(o, year)}`;
       return el;
@@ -4120,8 +4149,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         <div class="kv-row"><span class="k">+ Diritto camerale</span><span class="v">${fmtMoney(ts.dirittoCamerale)} €</span></div>
         <div class="subnote">Nel forfettario le spese reali (incluso ammortamento) e le addizionali regionali/comunali non si applicano: il coefficiente presume già i costi.</div>
         <div class="kv-row total"><span class="k">Totale dovuto</span><span class="v">${fmtMoney(f.totale)} €</span></div>
-        ${ts.credito>0 ? `<div class="kv-row"><span class="k">− Credito ${year-1}</span><span class="v">${fmtMoney(ts.credito)} €</span></div>
-        <div class="kv-row total"><span class="k">Da versare al netto del credito</span><span class="v">${fmtMoney(f.totaleNetto)} €</span></div>` : ''}
+        ${nettoRow(f)}
         <div class="subnote" style="margin-top:10px; font-weight:600; color:var(--ink);">Pianificazione acconti</div>
         ${accontiRow(f, year)}`;
       return el;
