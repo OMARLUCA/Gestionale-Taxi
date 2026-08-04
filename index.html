@@ -407,7 +407,7 @@
   .report-actions{display:flex; gap:6px; flex-shrink:0;}
   .report-actions button{background:var(--surface-2); border:1px solid var(--border); color:var(--ink-muted); width:30px; height:30px; border-radius:8px; font-size:13px; cursor:pointer; flex-shrink:0;}
   .report-actions button.danger.confirm{background:var(--red-soft); border-color:var(--red-line); color:var(--red); font-size:10px; width:auto; padding:0 8px;}
-  .report-body{margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); font-family:'JetBrains Mono', monospace; font-size:12.5px; white-space:pre-wrap; line-height:1.6; color:var(--ink);}
+  .report-body{margin-top:12px; padding-top:12px; border-top:1px dashed var(--border); color:var(--ink);}
   .report-toggle{font-size:11.5px; color:var(--amber-ink); margin-top:10px; cursor:pointer; font-weight:600;}
 
   .overlay#overlayConfirm{align-items:center;}
@@ -672,6 +672,7 @@
       <div class="chip chip-sm" data-grp="giorno">Giorno</div>
       <div class="chip chip-sm" data-grp="settimana">Settimana</div>
       <div class="chip chip-sm" data-grp="mese">Mese</div>
+      <div class="chip chip-sm" data-grp="anno">Anno</div>
       <div class="chip chip-sm" data-grp="metodo">Metodo pagamento</div>
       <div class="chip chip-sm" data-grp="tipologia">Tipologia corsa</div>
       <div class="chip chip-sm" data-grp="categoria">Categoria spesa</div>
@@ -686,9 +687,6 @@
         <div class="chip chip-sm" data-ord="importo_asc">Importo ↑</div>
       </div>
     </div>
-
-    <div class="form-row" style="margin-top:6px;"><label>Aggiungi anche</label></div>
-    <div id="repExtraToggles"></div>
 
     <div class="report-body" id="repPreviewBox" style="display:none;"></div>
 
@@ -4285,8 +4283,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   const TIPOLOGIA_FULL = { radio:'Radio', posteggio:'Posteggio', prenotazione:'Prenotazione' };
   const CATEGORIA_FULL = Object.assign({}, CATEGORIA_LABEL);
   const CATEGORIE_KEYS = Object.keys(CATEGORIA_LABEL);
-  const GROUP_LABEL = { nessuno:'Totale periodo', giorno:'Giorno', settimana:'Settimana', mese:'Mese', metodo:'Metodo pagamento', tipologia:'Tipologia corsa', categoria:'Categoria spesa' };
-  const TIME_GROUPS = ['giorno','settimana','mese'];
+  const GROUP_LABEL = { nessuno:'Totale periodo', giorno:'Giorno', settimana:'Settimana', mese:'Mese', anno:'Anno', metodo:'Metodo pagamento', tipologia:'Tipologia corsa', categoria:'Categoria spesa' };
+  const TIME_GROUPS = ['giorno','settimana','mese','anno'];
   const DIM_GROUPS = ['metodo','tipologia','categoria'];
 
   function buildMultiChipRow(containerId, entries, dataAttr, defaultOn){
@@ -4352,6 +4350,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         const mkey = mv.dateKey.slice(0,7);
         const [y,m] = mkey.split('-').map(Number);
         add(mkey, `${MESI_FULL[m-1].charAt(0).toUpperCase()+MESI_FULL[m-1].slice(1)} ${y}`, mkey, mv);
+      } else if(groupBy==='anno'){
+        const y = mv.dateKey.slice(0,4);
+        add(y, y, y, mv);
       } else if(groupBy==='metodo'){
         add(mv.metodo, METODO_LABEL[mv.metodo]||mv.metodo, METODO_LABEL[mv.metodo]||mv.metodo, mv);
       } else if(groupBy==='tipologia'){
@@ -4412,67 +4413,59 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return data;
   }
 
+  // Visualizzazione pulita: un numero solo per riga, raggruppato come richiesto, niente di più.
+  function renderReportVisual(data){
+    const wrap = document.createElement('div');
+    const showE = data.filter.tipoMovimento !== 'spese';
+    const showS = data.filter.tipoMovimento !== 'entrate';
+    if(data.groups.length===0){
+      const es = document.createElement('div'); es.className='subnote'; es.textContent = 'Nessun movimento nel periodo con questi filtri.';
+      wrap.appendChild(es);
+      return wrap;
+    }
+    data.groups.forEach(g=>{
+      const row = document.createElement('div'); row.className='kv-row';
+      let valTxt;
+      if(showE && showS) valTxt = `+${fmtMoney(g.entrate)} / −${fmtMoney(g.spese)} €`;
+      else if(showE) valTxt = `${fmtMoney(g.entrate)} €`;
+      else valTxt = `${fmtMoney(g.spese)} €`;
+      row.innerHTML = `<span class="k">${escapeHtml(g.label)}</span><span class="v">${valTxt}</span>`;
+      wrap.appendChild(row);
+    });
+    if(data.groups.length>1 || data.groupBy==='nessuno'){
+      const totRow = document.createElement('div'); totRow.className='kv-row total';
+      let totLabel, totVal;
+      if(showE && showS){ totLabel='TOTALE (entrate − spese)'; totVal=data.totals.netto; }
+      else if(showE){ totLabel='TOTALE ENTRATE'; totVal=data.totals.entrate; }
+      else { totLabel='TOTALE SPESE'; totVal=data.totals.spese; }
+      totRow.innerHTML = `<span class="k">${totLabel}</span><span class="v">${fmtMoney(totVal)} €</span>`;
+      wrap.appendChild(totRow);
+    }
+    return wrap;
+  }
+
   function formatReportText(report){
     const lines = [];
     lines.push(report.nome);
     lines.push(report.periodoLabel);
     lines.push('—'.repeat(28));
     const d = report.data;
-    if(typeof d.km === 'number') lines.push(`Km: ${d.km.toLocaleString('it-IT')} km`);
-    if(d.ore) lines.push(`Ore lavorate: ${fmtDuration(d.ore.mins)} (${d.ore.giorni} giorni con turno)`);
-    if(typeof d.km === 'number' || d.ore) lines.push('');
-
-    lines.push(`RAGGRUPPATO PER: ${GROUP_LABEL[d.groupBy]}`, '');
+    const showE = d.filter.tipoMovimento !== 'spese';
+    const showS = d.filter.tipoMovimento !== 'entrate';
     d.groups.forEach(g=>{
-      lines.push(g.label);
-      let pctTxt = '';
-      if(d.groups.length>1){
-        const refEntrate = d.totals.entrate>0 ? (g.entrate/d.totals.entrate*100) : 0;
-        const refSpese = d.totals.spese>0 ? (g.spese/d.totals.spese*100) : 0;
-        const parts = [];
-        if(g.entrate>0) parts.push(`${refEntrate.toFixed(1)}% delle entrate`);
-        if(g.spese>0) parts.push(`${refSpese.toFixed(1)}% delle spese`);
-        if(parts.length) pctTxt = `  ·  ${parts.join(', ')}`;
-      }
-      lines.push(`  Entrate: ${fmtMoney(g.entrate)} €  ·  Spese: ${fmtMoney(g.spese)} €  ·  Netto: ${fmtMoney(g.netto)} €  ·  Voci: ${g.count}${pctTxt}`);
+      let valTxt;
+      if(showE && showS) valTxt = `+${fmtMoney(g.entrate)} / −${fmtMoney(g.spese)} €`;
+      else if(showE) valTxt = `${fmtMoney(g.entrate)} €`;
+      else valTxt = `${fmtMoney(g.spese)} €`;
+      lines.push(`${g.label}: ${valTxt}`);
     });
-    if(d.groups.length>1){
-      lines.push('', '='.repeat(28), 'TOTALE PERIODO', '='.repeat(28));
-      lines.push(`Entrate: ${fmtMoney(d.totals.entrate)} €  ·  Spese: ${fmtMoney(d.totals.spese)} €  ·  Netto: ${fmtMoney(d.totals.netto)} €  ·  Voci: ${d.totals.count}`);
-      if(d.totals.entrate>0){
-        const speseSuEntrate = (d.totals.spese/d.totals.entrate*100);
-        const margine = (d.totals.netto/d.totals.entrate*100);
-        lines.push(`Spese sulle entrate: ${speseSuEntrate.toFixed(1)}%  ·  Margine netto: ${margine.toFixed(1)}%`);
-      }
-      const withData = d.groups.filter(g=>g.entrate>0||g.spese>0).length;
-      if(['giorno','settimana','mese'].includes(d.groupBy)){
-        lines.push(`Periodi con movimenti: ${withData} su ${d.groups.length}`);
-      }
-    }
-    if(d.tasse){
-      lines.push('', 'DICHIARAZIONE FISCALE (stima semplificata)');
-      if(d.tasse.tipo==='mese'){
-        const dd = d.tasse.dich;
-        lines.push(`Mese: ${d.tasse.mkey}`,
-          `Incasso reale: ${fmtMoney(dd.incassoReale)} €`,
-          `Contatore contante: ${fmtMoney(dd.contatoreCash)} €`,
-          `Dichiarazione: ${fmtMoney(dd.dichiarazione)} €`,
-          `Carburante da dichiarare: ${fmtMoney(dd.carburanteDichiarato)} €`);
-      } else {
-        const ts = d.tasse.summary;
-        lines.push(`Anno: ${d.tasse.year}`,
-          `Dichiarazione annua: ${fmtMoney(ts.dichiarazioneTot)} €`,
-          `--- Ordinario ---`, `Totale dovuto: ${fmtMoney(ts.ordinario.totale)} €`,
-          `--- Forfettario ---`, `Totale dovuto: ${fmtMoney(ts.forfettario.totale)} €`);
-        if(ts.credito>0) lines.push(`Credito anno precedente: ${fmtMoney(ts.credito)} €`, `Netto ordinario: ${fmtMoney(ts.ordinario.totaleNetto)} €`, `Netto forfettario: ${fmtMoney(ts.forfettario.totaleNetto)} €`);
-      }
-    } else if(report.data.include && report.data.include.tasse){
-      lines.push('', 'DICHIARAZIONE FISCALE', 'Disponibile solo se il periodo coincide con un mese intero o un anno intero.');
-    }
-    if(d.scadenze){
-      lines.push('', 'SCADENZE IMMINENTI (entro 45gg)');
-      if(d.scadenze.length===0) lines.push('Nessuna.');
-      d.scadenze.forEach(s=> lines.push(`${s.titolo} — ${s.scadenza} (${s.giorni<0?'scaduta':'tra '+s.giorni+'gg'})`));
+    if(d.groups.length>1 || d.groupBy==='nessuno'){
+      lines.push('—'.repeat(28));
+      let totLabel, totVal;
+      if(showE && showS){ totLabel='TOTALE (entrate − spese)'; totVal=d.totals.netto; }
+      else if(showE){ totLabel='TOTALE ENTRATE'; totVal=d.totals.entrate; }
+      else { totLabel='TOTALE SPESE'; totVal=d.totals.spese; }
+      lines.push(`${totLabel}: ${fmtMoney(totVal)} €`);
     }
     return lines.join('\n');
   }
@@ -4513,7 +4506,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         row.appendChild(toggle);
         if(expandedReportId===rep.id){
           const body = document.createElement('div'); body.className='report-body';
-          body.textContent = formatReportText(rep);
+          body.appendChild(renderReportVisual(rep.data));
           row.appendChild(body);
         }
         card.appendChild(row);
@@ -5087,7 +5080,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     buildMultiChipRow('repTipologiaChips', Object.entries(TIPOLOGIA_FULL), 'tipologia', true);
     buildMultiChipRow('repCategorieChips', CATEGORIE_KEYS.map(k=>[k, CATEGORIA_FULL[k]]), 'categoria', true);
     document.querySelectorAll('#repOrderChips .chip').forEach((c,i)=>c.classList.toggle('active', i===0));
-    buildExtraToggles();
     updateFilterVisibility();
     updateOrderChipsLabels();
     document.getElementById('repPreviewBox').style.display = 'none';
@@ -5131,19 +5123,16 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       tipologia: [...document.querySelectorAll('#repTipologiaChips .chip.active')].map(c=>c.dataset.tipologia),
       categorie: [...document.querySelectorAll('#repCategorieChips .chip.active')].map(c=>c.dataset.categoria)
     };
-    const include = {};
-    document.querySelectorAll('#repExtraToggles input[type=checkbox]').forEach(cb=>{ include[cb.dataset.ex] = cb.checked; });
-    return { fromKey, toKey, filter, include };
+    return { fromKey, toKey, filter, include:{} };
   }
 
   document.getElementById('repPreviewBtn').addEventListener('click', ()=>{
     const g = gatherReportOpts();
     if(!g) return;
     const data = computeReportData(g.fromKey, g.toKey, g.filter, repGroupBy, repOrderBy, g.include);
-    const periodoLabel = `Dal ${g.fromKey.split('-').reverse().join('/')} al ${g.toKey.split('-').reverse().join('/')}`;
-    const fakeReport = { nome: document.getElementById('repNome').value.trim() || 'Anteprima', periodoLabel, data };
     const box = document.getElementById('repPreviewBox');
-    box.textContent = formatReportText(fakeReport);
+    box.innerHTML = '';
+    box.appendChild(renderReportVisual(data));
     box.style.display = 'block';
     box.scrollIntoView({ behavior:'smooth', block:'nearest' });
   });
@@ -5327,7 +5316,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return (s.includes(';')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s;
   }
   // Raccoglie tutti i movimenti (entrate+spese) come righe piatte, filtrando per scopo.
-  function collectMovements(scope){
+  function collectMovementsForCsv(scope){
     const rows = [];
     const yearSel = String(annoSelezionato);
     const mesePrefix = monthKey(viewDate); // YYYY-MM
@@ -5350,7 +5339,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return rows;
   }
   function buildCsv(scope){
-    const rows = collectMovements(scope);
+    const rows = collectMovementsForCsv(scope);
     const head = ['Data','Ora','Tipo','Categoria','Metodo','Importo','Nota'];
     const lines = [head.join(';')];
     rows.forEach(r=>{
