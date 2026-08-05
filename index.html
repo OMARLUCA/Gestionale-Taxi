@@ -581,16 +581,26 @@
       <label>Categoria spesa</label>
       <select id="altroCatSelect">
         <option value="assicurazione">Assicurazione</option>
+        <option value="attrezzatura">Attrezzatura da lavoro</option>
+        <option value="bollo">Bollo auto</option>
         <option value="cancelleria">Cancelleria</option>
         <option value="canone_radio">Canone Radio</option>
         <option value="canone_tassametro">Canone Tassametro</option>
         <option value="carburante">Carburante</option>
+        <option value="commissioni_carte">Commissioni carte di credito</option>
+        <option value="contabilita">Contabilità</option>
+        <option value="firma_digitale">Firma digitale</option>
         <option value="gomme">Gomme</option>
+        <option value="interessi_finanziamento">Interessi finanziamento auto</option>
+        <option value="interessi_mutuo">Interessi mutuo</option>
         <option value="lavaggi">Lavaggi</option>
         <option value="manutenzioni">Manutenzioni</option>
+        <option value="pec">PEC</option>
+        <option value="pedaggi">Pedaggi autostradali</option>
         <option value="rata_autoveicolo">Rata Autoveicolo</option>
         <option value="ristorazione">Ristorazione</option>
         <option value="servizi_vari">Servizi vari</option>
+        <option value="spid">SPID aziendale</option>
         <option value="telefono">Telefono</option>
       </select>
     </div>
@@ -1927,9 +1937,11 @@
   // ---------- Entries list ----------
   const TIPO_LABEL = { posteggio:'PST', radio:'RDO', prenotazione:'PRN', carburante:'CAR', altro:'ALT' };
   const CATEGORIA_LABEL = {
-    assicurazione:'Assicurazione', cancelleria:'Cancelleria', canone_radio:'Canone Radio',
-    canone_tassametro:'Canone Tassametro', carburante:'Carburante', gomme:'Gomme', lavaggi:'Lavaggi',
-    manutenzioni:'Manutenzioni', rata_autoveicolo:'Rata Autoveicolo', ristorazione:'Ristorazione', servizi_vari:'Servizi vari', telefono:'Telefono'
+    assicurazione:'Assicurazione', attrezzatura:'Attrezzatura da lavoro', bollo:'Bollo auto', cancelleria:'Cancelleria', canone_radio:'Canone Radio',
+    canone_tassametro:'Canone Tassametro', carburante:'Carburante', commissioni_carte:'Commissioni carte di credito', contabilita:'Contabilità',
+    firma_digitale:'Firma digitale', gomme:'Gomme', interessi_finanziamento:'Interessi finanziamento auto', interessi_mutuo:'Interessi mutuo',
+    lavaggi:'Lavaggi', manutenzioni:'Manutenzioni', pec:'PEC', pedaggi:'Pedaggi autostradali', rata_autoveicolo:'Rata Autoveicolo',
+    ristorazione:'Ristorazione', servizi_vari:'Servizi vari', spid:'SPID aziendale', telefono:'Telefono'
   };
   // Categoria di una spesa, compatibile col vecchio formato (tipo==='carburante' o sottocategoria)
   function spesaCategoria(e){
