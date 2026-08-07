@@ -501,10 +501,135 @@
   .sheet-head h3{ font-size:19px !important; }
   .empty-state{ font-size:16px !important; }
   .deadline-status{ font-size:13px !important; }
+  /* ===== Riconciliazione carte: stile allineato al resto del gestionale ===== */
+  .rec-verdict{margin:0 0 14px; padding:20px 18px; border-radius:var(--radius); background:var(--surface); border:1px solid var(--border); border-top:2px solid var(--amber-line); position:relative; overflow:hidden;}
+  .rec-eyebrow{font-size:10.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--ink-faint);}
+  .rec-headline{font-family:'Oswald', sans-serif; font-size:20px; margin:8px 0 2px; line-height:1.15; font-weight:600; display:flex; align-items:center; gap:10px; flex-wrap:wrap; color:var(--ink);}
+  .rec-headline .rec-mark{font-size:16px; width:26px; height:26px; flex:none; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;}
+  .rec-verdict.ok .rec-headline .rec-mark{background:var(--green-soft); color:var(--green); border:1px solid var(--green-line);}
+  .rec-verdict.issue .rec-headline .rec-mark{background:var(--yellow-soft); color:var(--yellow); border:1px solid var(--yellow-line);}
+  .rec-verdict.idle .rec-headline{color:var(--ink-muted);}
+  .rec-note{color:var(--ink-muted); font-size:13px; margin-top:5px;}
+
+  .rec-imports{display:flex; flex-direction:column; gap:10px; padding:0 0 16px; margin-bottom:6px; border-bottom:1px solid var(--border);}
+  .rec-import{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
+  .rec-filebtn{position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:8px; background:var(--surface-2); color:var(--amber-ink); border:1px solid var(--amber-line); border-radius:9px; padding:11px 15px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap;}
+  .rec-filebtn input{position:absolute; inset:0; opacity:0; cursor:pointer;}
+  .rec-filebtn.sm{padding:7px 12px; font-size:12.5px;}
+  .rec-import .rec-stat{font-size:12.5px; color:var(--ink-muted); flex:1; min-width:180px;}
+  .rec-import .rec-stat b{color:var(--ink); font-family:'JetBrains Mono', monospace;}
+
+  .rec-exp-row{display:flex; justify-content:space-between; align-items:center; gap:14px; padding:13px 0; border-bottom:1px solid var(--border);}
+  .rec-exp-row:last-child{border-bottom:none;}
+  .rec-exp-label{font-size:14px; color:var(--ink);}
+  .rec-exp-label .k{display:block; color:var(--ink-faint); font-size:11px; letter-spacing:0.05em; text-transform:uppercase; margin-top:2px;}
+  .rec-amt-input{background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--ink); font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; font-size:15px; text-align:right; padding:10px 12px; width:130px; flex:none;}
+  .rec-amt-input:focus{outline:none; border-color:var(--amber-line);}
+  .rec-amt-input.filled{border-color:var(--amber-line); color:var(--amber-ink);}
+
+  .rec-controls{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px;}
+  .rec-tol{display:flex; align-items:center; gap:8px; color:var(--ink-faint); font-size:12.5px;}
+  .rec-tol input{width:60px; background:var(--surface-2); border:1px solid var(--border); border-radius:7px; color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:13px; text-align:right; padding:7px 8px;}
+  .rec-tol input:focus{outline:none; border-color:var(--amber-line);}
+
+  .rec-flow{padding:16px 0; border-bottom:1px solid var(--border);}
+  .rec-flow:last-child{border-bottom:none;}
+  .rec-flow-top{display:flex; justify-content:space-between; align-items:baseline; gap:12px;}
+  .rec-flow-name{font-size:14.5px; font-weight:600; color:var(--ink);}
+  .rec-flow-name .rec-sub2{display:block; color:var(--ink-faint); font-size:12px; font-weight:400; margin-top:1px;}
+  .rec-badge{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; font-weight:700; padding:4px 9px; border-radius:20px; flex:none;}
+  .rec-badge.ok{background:var(--green-soft); color:var(--green);}
+  .rec-badge.diff{background:var(--red-soft); color:var(--red);}
+  .rec-badge.empty{background:var(--surface-2); color:var(--ink-faint);}
+  .rec-flow-nums{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:12px;}
+  .rec-num-cell .rec-lbl{color:var(--ink-faint); font-size:10px; letter-spacing:0.06em; text-transform:uppercase;}
+  .rec-num-cell .rec-val{font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; font-size:14.5px; margin-top:3px; color:var(--ink);}
+  .rec-num-cell .rec-val.pos{color:var(--green);}
+  .rec-num-cell .rec-val.neg{color:var(--red);}
+  .rec-num-cell.delta{text-align:right;}
+  .rec-num-cell.bank{text-align:center;}
+  .rec-info-line{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:14px 0 2px; color:var(--ink-muted); font-size:13px;}
+  .rec-info-line .v{font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; color:var(--ink);}
+
+  .rec-settle{margin-top:18px; border-top:1px solid var(--border); padding-top:16px;}
+  .rec-settle-h{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:4px;}
+  .rec-settle-h .t{font-size:12px; letter-spacing:0.06em; text-transform:uppercase; font-weight:600; color:var(--ink);}
+  .rec-settle-sum{font-size:12.5px;}
+  .rec-settle-sum.ok{color:var(--green);}
+  .rec-settle-sum.bad{color:var(--red);}
+  .rec-srow{display:grid; grid-template-columns:auto 1fr auto auto; gap:10px; align-items:center; padding:8px 0; border-bottom:1px solid var(--border); font-size:13px;}
+  .rec-srow:last-child{border-bottom:none;}
+  .rec-srow .rec-sd{font-family:'JetBrains Mono', monospace; color:var(--ink-muted);}
+  .rec-srow .rec-se{font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; text-align:right; color:var(--ink-faint);}
+  .rec-srow .rec-sb{font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; text-align:right; color:var(--ink);}
+  .rec-srow .rec-tick{font-size:14px; width:20px; text-align:center;}
+  .rec-srow.miss{background:var(--red-soft); margin:0 -8px; padding:8px; border-radius:6px; border-bottom:none;}
+  .rec-srow.miss .rec-tick{color:var(--red);}
+  .rec-srow.ok .rec-tick{color:var(--green);}
+
+  .rec-unclass{margin-top:16px;}
+  .rec-unclass-head{display:flex; align-items:center; gap:8px; color:var(--yellow); font-size:12.5px; font-weight:600; margin-bottom:8px;}
+  .rec-uline{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); font-size:13px;}
+  .rec-uline:last-child{border-bottom:none;}
+  .rec-uline .rec-udesc{color:var(--ink-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1;}
+  .rec-uline .rec-uamt{font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; flex:none; color:var(--ink);}
+  .rec-uline select{background:var(--surface-2); color:var(--ink); border:1px solid var(--border); border-radius:7px; padding:6px 8px; font-size:12px; flex:none;}
+
+  #recDetailBox summary{cursor:pointer; color:var(--ink-muted); font-size:12.5px; list-style:none; padding:8px 0;}
+  #recDetailBox summary::-webkit-details-marker{display:none;}
+  #recDetailBox summary::before{content:"\203A"; color:var(--amber); margin-right:8px; display:inline-block; transition:transform .15s;}
+  #recDetailBox[open] summary::before{transform:rotate(90deg);}
+  .rec-grp{margin:6px 0 12px;}
+  .rec-grp-h{color:var(--amber-ink); font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; margin:10px 0 4px;}
+  .rec-dline{display:flex; justify-content:space-between; gap:10px; padding:6px 0; border-bottom:1px solid var(--border); font-size:12.5px;}
+  .rec-dline .rec-dd{color:var(--ink-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .rec-dline .rec-da{font-family:'JetBrains Mono', monospace; font-variant-numeric:tabular-nums; flex:none; color:var(--ink);}
+
+  .rec-kw-grid{display:grid; gap:12px;}
+  .rec-kw-item label{display:block; color:var(--ink-faint); font-size:11px; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:5px;}
+  .rec-kw-item input{width:100%; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:12.5px; padding:9px 11px;}
+  .rec-kw-item input:focus{outline:none; border-color:var(--amber-line);}
+  .rec-kw-note{color:var(--ink-faint); font-size:12px; margin-top:12px; line-height:1.5;}
+
+  .rec-doc-intro{color:var(--ink-muted); font-size:13px; margin:0 0 14px;}
+  .rec-doccat{border-bottom:1px solid var(--border); padding:12px 0;}
+  .rec-doccat:last-of-type{border-bottom:none;}
+  .rec-doccat-h{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .rec-doccat-name{font-size:14px; font-weight:600; color:var(--ink);}
+  .rec-doccat-name .rec-gen{color:var(--amber-ink); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px;}
+  .rec-doccat-list{margin-top:8px; display:flex; flex-direction:column; gap:6px;}
+  .rec-docfile{display:flex; align-items:center; gap:10px; font-size:12.5px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px;}
+  .rec-docfile .rec-dn{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink);}
+  .rec-docfile .rec-dz{color:var(--ink-faint); font-family:'JetBrains Mono', monospace; flex:none;}
+  .rec-docfile a{color:var(--amber-ink); text-decoration:none; flex:none;}
+  .rec-docfile .rec-rm{color:var(--red); cursor:pointer; flex:none; font-weight:700; padding:0 4px;}
+  .rec-doc-empty{color:var(--ink-faint); font-size:12px; font-style:italic;}
+  .rec-doc-email{margin-top:16px; border-top:1px solid var(--border); padding-top:16px; display:flex; flex-direction:column; gap:10px;}
+  .rec-doc-email input{background:var(--surface-2); border:1px solid var(--border); border-radius:8px; color:var(--ink); font-family:'Inter', sans-serif; font-size:14px; padding:10px 12px;}
+  .rec-doc-email input:focus{outline:none; border-color:var(--amber-line);}
+  .rec-doc-stat{font-size:12.5px; color:var(--ink-muted);}
+
+  .rec-foot{margin-top:6px; margin-bottom:14px; color:var(--ink-faint); font-size:11.5px; text-align:center; line-height:1.6;}
+
+  #recBank{width:100%; min-height:150px; resize:vertical; background:var(--surface-2); border:1px solid var(--border); border-radius:10px; color:var(--ink); font-family:'JetBrains Mono', monospace; font-size:12.5px; line-height:1.5; padding:14px; box-sizing:border-box;}
+  #recBank:focus{outline:none; border-color:var(--amber-line);}
+  #recBank::placeholder{color:var(--ink-faint);}
+  .card details summary{cursor:pointer; color:var(--ink-muted); font-size:13px; list-style:none; padding:8px 0;}
+  .card details summary::-webkit-details-marker{display:none;}
+  .card details summary::before{content:"\203A"; color:var(--amber); margin-right:8px; display:inline-block; transition:transform .15s;}
+  .card details[open] summary::before{transform:rotate(90deg);}
+
+  @media (max-width:440px){
+    .rec-flow-nums{grid-template-columns:1fr 1fr;}
+    .rec-num-cell.delta{grid-column:1 / -1; text-align:left;}
+    .rec-amt-input{width:110px;}
+  }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </head>
 <body>
 
@@ -531,6 +656,10 @@
   <button data-tab="scadenze">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>
     Scadenze
+  </button>
+  <button data-tab="riconciliazione">
+    <svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg>
+    Riconciliazione
   </button>
 </div>
 
@@ -1566,7 +1695,7 @@
   document.getElementById('calPrevMonth').addEventListener('click', ()=>{ calMonthDate.setMonth(calMonthDate.getMonth()-1); renderCalGrid(); });
   document.getElementById('calNextMonth').addEventListener('click', ()=>{ calMonthDate.setMonth(calMonthDate.getMonth()+1); renderCalGrid(); });
 
-  const ALTRO_TABS = ['report','tasse','scadenze'];
+  const ALTRO_TABS = ['report','tasse','scadenze','riconciliazione'];
   function setActiveTabUI(tab){
     document.querySelectorAll('.bottom-tabs > button[data-tab]').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
     document.querySelectorAll('.altro-popover button[data-tab]').forEach(b=> b.classList.toggle('active', b.dataset.tab===tab));
@@ -4810,7 +4939,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const day = getDayReadonly(dayKey);
     const isToday = isSameDay(viewDate, new Date());
 
-    document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi'||activeTab==='scansioni'||activeTab==='oggi') ? 'none' : 'flex';
+    document.getElementById('fabAdd').style.display = (activeTab==='tasse'||activeTab==='riepilogo'||activeTab==='corrispettivi'||activeTab==='scansioni'||activeTab==='oggi'||activeTab==='riconciliazione') ? 'none' : 'flex';
 
     if(activeTab==='oggi'){
       renderScadenzeAlert(main);
@@ -4827,6 +4956,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     else if(activeTab==='report'){ renderReportTab(main); }
     else if(activeTab==='corrispettivi'){ renderCorrispettivi(main); }
     else if(activeTab==='scansioni'){ renderScansioni(main); }
+    else if(activeTab==='riconciliazione'){ if(typeof window.renderRiconciliazione==='function') window.renderRiconciliazione(main); }
   }
 
   // ---------- Entry sheet ----------
@@ -5555,6 +5685,653 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     }
   })();
 
+})();
+</script>
+<script>
+(function(){
+  "use strict";
+
+  const RECONCILIAZIONE_HTML = `
+  <div class="disclaimer">Riconciliazione incassi carte: carica i report Nexi/Amex e i movimenti banca, resta tutto sul dispositivo. Strumento di controllo, non sostituisce la contabilità ufficiale.</div>
+
+  <div class="card">
+    <div class="form-row"><label>Periodo</label><input id="recMese" type="text" placeholder="es. Giugno 2026" autocomplete="off"></div>
+  </div>
+
+  <div class="rec-verdict idle" id="recVerdict">
+    <div class="rec-eyebrow">Esito</div>
+    <div class="rec-headline" id="recVerdictHead">In attesa dei dati</div>
+    <div class="rec-note" id="recVerdictNote">Carica i report e i movimenti della banca.</div>
+  </div>
+
+  <div class="card">
+    <h2>I · Attesi dai report</h2>
+    <div class="rec-imports">
+      <div class="rec-import">
+        <label class="rec-filebtn">&#8681; Report Nexi (CSV/Excel)<input type="file" id="recFileNexi" accept=".csv,.xlsx,.xls,text/csv"></label>
+        <span class="rec-stat" id="recNexiStat">Compila Nexi lordo e commissioni.</span>
+      </div>
+      <div class="rec-import">
+        <label class="rec-filebtn">&#8681; Report Amex (CSV/Excel)<input type="file" id="recFileAmex" accept=".csv,.xlsx,.xls,text/csv"></label>
+        <span class="rec-stat" id="recAmexStat">Compila Amex netto.</span>
+      </div>
+    </div>
+    <div class="rec-exp-row">
+      <div class="rec-exp-label">American Express &mdash; netto<span class="k" id="recKAmex">portale esercenti Amex &middot; colonna netto</span></div>
+      <input class="rec-amt-input" id="recExpAmex" inputmode="decimal" placeholder="0,00">
+    </div>
+    <div class="rec-exp-row">
+      <div class="rec-exp-label">Nexi &mdash; transato lordo<span class="k" id="recKNexi">Nexi Business &middot; incassi per circuito</span></div>
+      <input class="rec-amt-input" id="recExpNexi" inputmode="decimal" placeholder="0,00">
+    </div>
+    <div class="rec-exp-row">
+      <div class="rec-exp-label">Nexi &mdash; commissioni<span class="k" id="recKComm">Nexi Business &middot; totale commissioni</span></div>
+      <input class="rec-amt-input" id="recExpComm" inputmode="decimal" placeholder="0,00">
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>II · Movimenti banca</h2>
+    <div class="rec-import" style="padding-bottom:14px;margin-bottom:12px;border-bottom:1px solid var(--border);">
+      <label class="rec-filebtn">&#8681; Movimenti BPM (CSV/Excel)<input type="file" id="recFileBank" accept=".csv,.xlsx,.xls,text/csv"></label>
+      <span class="rec-stat" id="recBankStat">Esporta i movimenti dal tuo home banking e caricali qui.</span>
+    </div>
+    <div class="rec-controls" style="margin-top:0;">
+      <span class="rec-tol">tolleranza &euro; <input id="recTol" inputmode="decimal" value="0,02"></span>
+    </div>
+    <details style="margin-top:14px;">
+      <summary>Oppure incolla dal PDF (ripiego)</summary>
+      <textarea id="recBank" style="margin-top:10px;" placeholder="Incolla le righe dal PDF Banco BPM (le righe spezzate su due righe vengono ricomposte)."></textarea>
+      <div class="rec-controls">
+        <button class="save-btn" id="recRun" style="width:auto; padding:12px 22px;">Analizza incollato</button>
+        <button class="save-btn secondary" id="recClear" style="width:auto; padding:11px 16px;">Svuota</button>
+      </div>
+    </details>
+  </div>
+
+  <div class="card" id="recResultsSec" style="display:none;">
+    <h2>III · Riconciliazione</h2>
+    <div id="recFlows"></div>
+    <div id="recInfoBox"></div>
+    <div class="rec-settle" id="recSettleBox" style="display:none;">
+      <div class="rec-settle-h"><span class="t">Accrediti Nexi &mdash; atteso vs trovato</span><span class="rec-settle-sum" id="recSettleSum"></span></div>
+      <div id="recSettleList"></div>
+    </div>
+    <div class="rec-unclass" id="recUnclassBox" style="display:none;">
+      <div class="rec-unclass-head">&#9888; Accrediti non riconosciuti &mdash; assegnali per non perderli</div>
+      <div id="recUnclassList"></div>
+    </div>
+    <details id="recDetailBox">
+      <summary>Dettaglio righe per flusso</summary>
+      <div id="recDetail"></div>
+    </details>
+  </div>
+
+  <div class="card" id="recCommSec" style="display:none;">
+    <h2>IV · Commissioni</h2>
+    <div id="recCommBox"></div>
+  </div>
+
+  <div class="card" id="recDocSec">
+    <h2>V · Documenti</h2>
+    <p class="rec-doc-intro">Carica i PDF divisi per tipologia. Poi generi lo ZIP (cartelle per tipologia) e apri la bozza email gi&agrave; compilata: alleghi lo ZIP e invii.</p>
+    <div id="recDocCats"></div>
+    <div class="rec-doc-email">
+      <input id="recDocTo" type="email" placeholder="Destinatario (es. commercialista@studio.it)" autocomplete="off">
+      <input id="recDocSubject" type="text" placeholder="Oggetto (lascia vuoto per auto)" autocomplete="off">
+      <div class="rec-controls" style="margin-top:0;">
+        <button class="save-btn" id="recDocZip" style="width:auto; padding:12px 22px;">&#8681; Scarica tutto (ZIP)</button>
+        <button class="save-btn secondary" id="recDocMail" style="width:auto; padding:11px 16px;">&#9993; Bozza email</button>
+      </div>
+      <span class="rec-doc-stat" id="recDocStat">Nessun documento caricato.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>VI · Parole chiave</h2>
+    <div class="rec-kw-grid">
+      <div class="rec-kw-item"><label>Amex (accrediti netti)</label><input id="recKwAmex" value="AMERICAN EXPRESS, AMEX"></div>
+      <div class="rec-kw-item"><label>Nexi (accrediti lordi + commissioni SDD)</label><input id="recKwNexi" value="NEXI PAYMENTS, NEXI"></div>
+      <div class="rec-kw-item"><label>Altri incassi non-carta (es. buoni taxi)</label><input id="recKwTaxi" value="TAXIBLU"></div>
+    </div>
+    <p class="rec-kw-note">Le righe Nexi <b>in accredito</b> = lordo; quelle Nexi <b>in addebito</b> (SDD) = commissioni. Amex arriva gi&agrave; netto.</p>
+  </div>
+
+  <div class="rec-foot">Strumento locale &middot; nessun dato lascia il dispositivo<br>Import CSV nativo e offline; l'Excel usa una libreria caricata online (in mancanza, salva come CSV).</div>
+`;
+
+  const eur=new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'});
+  const fmt=n=>new Intl.NumberFormat('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2,useGrouping:false}).format(n);
+  const MONEY=/-?\d{1,3}(?:\.\d{3})*,\d{2}/;
+  const CODE=/REDITO[^0-9]*(\d{6})/;
+
+  // ---------- Stato persistente: sopravvive ai cambi di tab (main.innerHTML viene ricostruito ad ogni render) ----------
+  let recNexiRep=null, recAmexRep=null, recLines=[];
+  let recForm = { mese:'', tol:'0,02', expAmex:'', expNexi:'', expComm:'',
+    kwAmex:'AMERICAN EXPRESS, AMEX', kwNexi:'NEXI PAYMENTS, NEXI', kwTaxi:'TAXIBLU',
+    docTo:'', docSubject:'', bankPaste:'' };
+  const DOC_CATS=[
+    ['corrispettivi','Corrispettivi',true],
+    ['ec_nexi','Estratto conto Nexi',false],
+    ['ec_amex','Estratto conto Amex',false],
+    ['ci_nexi','Credito d\u2019imposta Nexi',false],
+    ['ci_amex','Credito d\u2019imposta Amex',false],
+    ['bonifici','Bonifici / storni',false],
+    ['altro','Altro',false]
+  ];
+  const recDocs={}; DOC_CATS.forEach(([k])=>recDocs[k]=[]);
+
+  // ---------- Funzioni pure (nessun accesso al DOM): logica identica all'originale ----------
+  function parseAmountField(str){
+    if(str==null) return 0;
+    let s=String(str).replace(/[^\d.,-]/g,''); if(!s) return 0;
+    const neg=s.includes('-'); s=s.replace(/-/g,'');
+    if(s.includes('.')&&s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+    else if(s.includes(',')) s=s.replace(',','.');
+    let n=parseFloat(s); return isNaN(n)?0:(neg?-n:n);
+  }
+  function pf(v){
+    if(typeof v==='number') return v;
+    let s=String(v==null?'':v).trim().replace(/[^\d.,-]/g,''); if(!s) return 0;
+    const neg=s.includes('-'); s=s.replace(/-/g,'');
+    if(s.includes('.')&&s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+    else if(s.includes(',')) s=s.replace(',','.');
+    const n=parseFloat(s); return isNaN(n)?0:(neg?-n:n);
+  }
+  function firstAmount(line){
+    const n=line.replace(/-\s+/g,'-'); const m=n.match(MONEY); if(!m) return null;
+    const t=m[0], neg=t.startsWith('-');
+    const v=parseFloat(t.replace('-','').replace(/\./g,'').replace(',','.'));
+    return neg?-v:v;
+  }
+  function recKw(str){return (str||'').split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);}
+  function classify(U,amt){
+    if(recKw(recForm.kwAmex).some(k=>U.includes(k))) return 'amex';
+    if(recKw(recForm.kwNexi).some(k=>U.includes(k))) return amt<0?'comm':'nexi';
+    if(recKw(recForm.kwTaxi).some(k=>U.includes(k))&&amt>0) return 'taxi';
+    return amt>0?'altroc':'altrod';
+  }
+  const codeKey=c=>c.slice(4,6)+c.slice(2,4)+c.slice(0,2);
+  const codePretty=c=>c.slice(0,2)+'.'+c.slice(2,4);
+  function dateCode(v){
+    const s=String(v||'').trim();
+    let m=s.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{4})/); if(m) return m[1]+m[2]+m[3].slice(2);
+    m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[3]+m[2]+m[1].slice(2);
+    return '';
+  }
+  function findCol(headers,names){
+    const L=headers.map(h=>String(h||'').trim().toLowerCase());
+    for(const nm of names){ const i=L.indexOf(nm.toLowerCase()); if(i>=0) return i; }
+    return -1;
+  }
+  function splitCsvLine(line,delim){
+    const out=[]; let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){ const ch=line[i];
+      if(inQ){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else inQ=false; } else cur+=ch; }
+      else { if(ch==='"') inQ=true; else if(ch===delim){ out.push(cur); cur=''; } else cur+=ch; }
+    }
+    out.push(cur); return out.map(s=>s.trim());
+  }
+  function parseDelimited(text){
+    const raw=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(l=>l.trim().length);
+    if(!raw.length) return {headers:[],rows:[]};
+    const delim=(raw[0].split(';').length>raw[0].split(',').length)?';':',';
+    const headers=splitCsvLine(raw[0],delim);
+    const rows=[];
+    for(let k=1;k<raw.length;k++){ const c=splitCsvLine(raw[k],delim); if(c.length<2) continue; rows.push(c); }
+    return {headers,rows};
+  }
+  function readFile(file){
+    return new Promise((res,rej)=>{
+      const ext=(file.name||'').toLowerCase();
+      const rd=new FileReader(); rd.onerror=()=>rej('read');
+      if(/\.(xlsx|xls)$/.test(ext)){
+        if(typeof XLSX==='undefined'){ rej('xlsx'); return; }
+        rd.onload=()=>{ try{
+          const wb=XLSX.read(new Uint8Array(rd.result),{type:'array'});
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          const arr=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+          const headers=(arr[0]||[]).map(h=>String(h).trim());
+          const rows=arr.slice(1).filter(r=>r.some(c=>String(c).trim().length));
+          res({headers,rows});
+        }catch(e){ rej('xlsx'); } };
+        rd.readAsArrayBuffer(file);
+      } else {
+        rd.onload=()=>res(parseDelimited(String(rd.result)));
+        rd.readAsText(file);
+      }
+    });
+  }
+  function processNexi({headers,rows}){
+    const iG=findCol(headers,['Importo pagamento']);
+    const iCr=findCol(headers,['Commissione calcolata arrotondata','Commissione calcolata']);
+    const iCc=findCol(headers,['Commissione calcolata']);
+    const iA=findCol(headers,['Data accredito']);
+    const iIf=findCol(headers,['Interchange fee']);
+    const iOc=findCol(headers,['Oneri circuito']);
+    const iOm=findCol(headers,['Oneri merchant']);
+    const iFx=findCol(headers,['Commissione fissa']);
+    const iT=findCol(headers,['Tipo carta']);
+    if(iG<0||iA<0) return null;
+    const byCode={}, byCirc={};
+    let totG=0,totCr=0,totCc=0,totIf=0,totOc=0,totOm=0,totFx=0,n=0;
+    for(const c of rows){
+      const g=pf(c[iG]);
+      const cr=iCr>=0?pf(c[iCr]):0;
+      const cc=iCc>=0?pf(c[iCc]):cr;
+      const code=dateCode(c[iA]); if(code) byCode[code]=(byCode[code]||0)+g;
+      totG+=g; totCr+=cr; totCc+=cc;
+      totIf+=iIf>=0?pf(c[iIf]):0; totOc+=iOc>=0?pf(c[iOc]):0; totOm+=iOm>=0?pf(c[iOm]):0; totFx+=iFx>=0?pf(c[iFx]):0;
+      const t=(iT>=0?String(c[iT]||'').trim():'')||'Altro';
+      if(!byCirc[t]) byCirc[t]={g:0,c:0,n:0};
+      byCirc[t].g+=g; byCirc[t].c+=cc; byCirc[t].n++;
+      n++;
+    }
+    return n?{byCode,totGross:totG,totComm:totCr,n,
+      comm:{totCc,totCr,totIf,totOc,totOm,totFx,byCirc}}:null;
+  }
+  function processAmex({headers,rows}){
+    const iN=findCol(headers,['Netto','Netto Calcolato','Netto Dichiarato']);
+    const iL=findCol(headers,['Lordo']);
+    const iCo=findCol(headers,['Commissione']);
+    if(iN<0&&iL<0) return null;
+    let net=0,lordo=0,comm=0,n=0;
+    for(const c of rows){
+      const l=iL>=0?pf(c[iL]):0;
+      const co=iCo>=0?Math.abs(pf(c[iCo])):0;
+      const v=iN>=0?pf(c[iN]):(l-co);
+      net+=v; lordo+=l; comm+=co; n++;
+    }
+    return n?{totNet:net,totLordo:lordo,totComm:comm,n}:null;
+  }
+  function processBank({headers,rows}){
+    const iA=findCol(headers,['Importo','Importo (EUR)','Importo operazione']);
+    const iD=findCol(headers,['Descrizione','Descrizione operazione','Descrizione delle operazioni','Causale']);
+    if(iA<0||iD<0) return null;
+    const out=[];
+    for(const c of rows){
+      if(c.length<=Math.max(iA,iD)) continue;
+      const amount=pf(c[iA]); const full=String(c[iD]||'').trim();
+      if(!full||amount===0||/SALDO INIZIALE|SALDO FINALE/i.test(full)) continue;
+      const U=full.toUpperCase(); const cat=classify(U,amount);
+      const sub=(cat==='nexi')?(U.includes('BANCOMAT')?'Bancomat':'Circuiti internaz./APM'):'';
+      const code=(cat==='nexi')?((U.match(CODE)||[])[1]||''):'';
+      out.push({full,desc:full,amount,cat,sub,code});
+    }
+    return out.length?out:null;
+  }
+  function slug(s){return (s||'').trim().toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'periodo';}
+  function downloadBlob(blob,name){
+    const a=document.createElement('a'); const u=URL.createObjectURL(blob);
+    a.href=u; a.download=name; document.body.appendChild(a); a.click();
+    setTimeout(()=>{document.body.removeChild(a);URL.revokeObjectURL(u);},1000);
+  }
+  const fmtSize=b=>b<1024?b+' B':b<1048576?(b/1024).toFixed(0)+' KB':(b/1048576).toFixed(1)+' MB';
+
+  const LABELS={
+    amex:{name:'American Express',sub:'accrediti al netto',exp:'#recExpAmex',key:'expAmex'},
+    nexi:{name:'Nexi',sub:'accrediti lordi',exp:'#recExpNexi',key:'expNexi'},
+    comm:{name:'Nexi \u2014 commissioni',sub:'addebito SDD',exp:'#recExpComm',key:'expComm'}
+  };
+
+  // ---------- Rendering: ricostruito ogni volta che si apre la tab, ma legge/riscrive lo stato persistente sopra ----------
+  window.renderRiconciliazione = function(container){
+    container.innerHTML = RECONCILIAZIONE_HTML;
+    const $=s=>container.querySelector(s);
+
+    // Ripristino i valori salvati (se l'utente aveva già iniziato a lavorare e ha solo cambiato tab)
+    $('#recMese').value = recForm.mese;
+    $('#recTol').value = recForm.tol;
+    $('#recExpAmex').value = recForm.expAmex; if(recForm.expAmex) $('#recExpAmex').classList.add('filled');
+    $('#recExpNexi').value = recForm.expNexi; if(recForm.expNexi) $('#recExpNexi').classList.add('filled');
+    $('#recExpComm').value = recForm.expComm; if(recForm.expComm) $('#recExpComm').classList.add('filled');
+    $('#recKwAmex').value = recForm.kwAmex;
+    $('#recKwNexi').value = recForm.kwNexi;
+    $('#recKwTaxi').value = recForm.kwTaxi;
+    $('#recDocTo').value = recForm.docTo;
+    $('#recDocSubject').value = recForm.docSubject;
+    $('#recBank').value = recForm.bankPaste;
+    if(recNexiRep){
+      $('#recKNexi').innerHTML='da report Nexi &middot; '+recNexiRep.n+' transazioni';
+      $('#recKComm').innerHTML='da report Nexi &middot; '+Object.keys(recNexiRep.byCode).length+' accrediti';
+      $('#recNexiStat').innerHTML='Nexi: <b>'+recNexiRep.n+'</b> mov &middot; lordo <b>'+fmt(recNexiRep.totGross)+'</b> &middot; comm <b>'+fmt(recNexiRep.totComm)+'</b>';
+    }
+    if(recAmexRep){
+      $('#recKAmex').innerHTML='da report Amex &middot; '+recAmexRep.n+' operazioni';
+      $('#recAmexStat').innerHTML='Amex: <b>'+recAmexRep.n+'</b> mov &middot; netto <b>'+fmt(recAmexRep.totNet)+'</b>';
+    }
+    if(recLines.length) $('#recBankStat').innerHTML='Movimenti BPM: <b>'+recLines.length+'</b> righe caricate.';
+
+    // ---- funzioni con accesso al DOM: chiuse sul container di questo render ----
+    function renderCommissions(){
+      const sec=$('#recCommSec'), box=$('#recCommBox');
+      if(!recNexiRep && !recAmexRep){ sec.style.display='none'; return; }
+      sec.style.display=''; let html='';
+      if(recNexiRep && recNexiRep.comm){
+        const a=recNexiRep.comm, g=recNexiRep.totGross;
+        const passthru=a.totIf+a.totOc, margin=a.totCc-a.totIf-a.totOc-a.totOm;
+        const rate=g?a.totCc/g*100:0, mRate=g?margin/g*100:0;
+        const coherent = a.totFx<=0.005 && margin>=-0.01;
+        html+='<div class="rec-flow"><div class="rec-flow-top">'+
+          '<div class="rec-flow-name">Nexi<span class="rec-sub2">'+recNexiRep.n+' transazioni &middot; transato '+eur.format(g)+'</span></div>'+
+          '<span class="rec-badge '+(coherent?'ok':'diff')+'">'+(coherent?'coerente':'da controllare')+'</span></div>'+
+          '<div class="rec-flow-nums">'+
+          '<div class="rec-num-cell"><div class="rec-lbl">Commissioni</div><div class="rec-val">'+eur.format(a.totCc)+'</div></div>'+
+          '<div class="rec-num-cell bank"><div class="rec-lbl">Aliquota media</div><div class="rec-val">'+rate.toFixed(3)+'%</div></div>'+
+          '<div class="rec-num-cell delta"><div class="rec-lbl">Fee fisse</div><div class="rec-val '+(a.totFx>0.005?'neg':'')+'">'+eur.format(a.totFx)+'</div></div>'+
+          '</div>'+
+          '<div class="rec-flow-nums" style="margin-top:8px;">'+
+          '<div class="rec-num-cell"><div class="rec-lbl">Girato a circuiti/banca</div><div class="rec-val">'+eur.format(passthru)+'</div></div>'+
+          '<div class="rec-num-cell bank"><div class="rec-lbl">Margine Nexi</div><div class="rec-val">'+eur.format(margin)+'</div></div>'+
+          '<div class="rec-num-cell delta"><div class="rec-lbl">% margine</div><div class="rec-val">'+mRate.toFixed(3)+'%</div></div>'+
+          '</div></div>';
+        const circ=Object.entries(a.byCirc).sort((x,y)=>y[1].g-x[1].g);
+        html+='<div style="margin-top:6px;">';
+        circ.forEach(([t,v])=>{
+          const r=v.g?v.c/v.g*100:0;
+          html+='<div class="rec-srow ok"><span class="rec-tick" style="color:var(--ink-faint)">&middot;</span>'+
+            '<span class="rec-sd" style="text-transform:capitalize">'+t.toLowerCase()+'</span>'+
+            '<span class="rec-se">'+eur.format(v.g)+'</span>'+
+            '<span class="rec-sb">'+r.toFixed(2)+'%</span></div>';
+        });
+        html+='</div>';
+      }
+      if(recAmexRep && recAmexRep.totLordo){
+        const r=recAmexRep.totComm/recAmexRep.totLordo*100;
+        html+='<div class="rec-flow"><div class="rec-flow-top">'+
+          '<div class="rec-flow-name">American Express<span class="rec-sub2">'+recAmexRep.n+' operazioni &middot; lordo '+eur.format(recAmexRep.totLordo)+'</span></div>'+
+          '<span class="rec-badge ok">piatta</span></div>'+
+          '<div class="rec-flow-nums">'+
+          '<div class="rec-num-cell"><div class="rec-lbl">Commissioni</div><div class="rec-val">'+eur.format(recAmexRep.totComm)+'</div></div>'+
+          '<div class="rec-num-cell bank"><div class="rec-lbl">Aliquota</div><div class="rec-val">'+r.toFixed(3)+'%</div></div>'+
+          '<div class="rec-num-cell delta"><div class="rec-lbl">Netto</div><div class="rec-val">'+eur.format(recAmexRep.totNet)+'</div></div>'+
+          '</div></div>';
+      }
+      html+='<div class="rec-info-line" style="border-top:1px solid var(--border);margin-top:12px;padding-top:14px;color:var(--ink-muted)">'+
+        '<span>La commissione \u00e8 interchange + oneri circuito + margine, tracciata voce per voce. Le aliquote variano per circuito, non per arbitrio.</span></div>';
+      box.innerHTML=html;
+    }
+
+    async function handleImport(ev,kind){
+      const file=ev.target.files[0]; if(!file) return;
+      const statId=kind==='nexi'?'#recNexiStat':'#recAmexStat';
+      try{
+        const data=await readFile(file);
+        if(kind==='nexi'){
+          const p=processNexi(data);
+          if(!p){ $(statId).textContent='Report Nexi non riconosciuto (attese colonne "Importo pagamento" e "Data accredito").'; return; }
+          recNexiRep=p;
+          $('#recExpNexi').value=fmt(p.totGross); $('#recExpNexi').classList.add('filled'); recForm.expNexi=fmt(p.totGross);
+          $('#recExpComm').value=fmt(p.totComm); $('#recExpComm').classList.add('filled'); recForm.expComm=fmt(p.totComm);
+          $('#recKNexi').innerHTML='da report Nexi &middot; '+p.n+' transazioni';
+          $('#recKComm').innerHTML='da report Nexi &middot; '+Object.keys(p.byCode).length+' accrediti';
+          $(statId).innerHTML='Nexi: <b>'+p.n+'</b> mov &middot; lordo <b>'+fmt(p.totGross)+'</b> &middot; comm <b>'+fmt(p.totComm)+'</b>';
+        } else {
+          const p=processAmex(data);
+          if(!p){ $(statId).textContent='Report Amex non riconosciuto (attesa colonna "Netto" o "Lordo").'; return; }
+          recAmexRep=p;
+          $('#recExpAmex').value=fmt(p.totNet); $('#recExpAmex').classList.add('filled'); recForm.expAmex=fmt(p.totNet);
+          $('#recKAmex').innerHTML='da report Amex &middot; '+p.n+' operazioni';
+          $(statId).innerHTML='Amex: <b>'+p.n+'</b> mov &middot; netto <b>'+fmt(p.totNet)+'</b>';
+        }
+        renderCommissions();
+        if(recLines.length) render();
+      }catch(e){
+        $(statId).textContent = (e==='xlsx') ? 'Excel non leggibile ora (offline?): salvalo come CSV e ricaricalo.' : 'File non leggibile.';
+      }
+    }
+    $('#recFileNexi').addEventListener('change',e=>handleImport(e,'nexi'));
+    $('#recFileAmex').addEventListener('change',e=>handleImport(e,'amex'));
+
+    // ---------- Documenti ----------
+    function buildDocCats(){
+      const host=$('#recDocCats'); host.innerHTML='';
+      DOC_CATS.forEach(([key,label,gen])=>{
+        const el=document.createElement('div'); el.className='rec-doccat';
+        el.innerHTML='<div class="rec-doccat-h"><div class="rec-doccat-name">'+label+
+          (gen?'<span class="rec-gen">dal gestionale</span>':'')+'</div>'+
+          '<label class="rec-filebtn sm">+ PDF<input type="file" accept="application/pdf,.pdf" multiple data-cat="'+key+'"></label></div>'+
+          '<div class="rec-doccat-list" data-cat="'+key+'"></div>';
+        host.appendChild(el);
+      });
+      host.querySelectorAll('input[type=file]').forEach(inp=>{
+        inp.addEventListener('change',e=>{
+          const key=e.target.dataset.cat;
+          [...e.target.files].forEach(f=>{ if(/pdf$/i.test(f.name)||f.type==='application/pdf') recDocs[key].push(f); });
+          e.target.value=''; renderDocs();
+        });
+      });
+      renderDocs();
+    }
+    function renderDocs(){
+      let total=0,count=0;
+      DOC_CATS.forEach(([key])=>{
+        const list=$('.rec-doccat-list[data-cat="'+key+'"]'); if(!list) return;
+        const arr=recDocs[key];
+        if(!arr.length){ list.innerHTML='<span class="rec-doc-empty">nessun file</span>'; return; }
+        list.innerHTML='';
+        arr.forEach((f,i)=>{
+          total+=f.size; count++;
+          const url=URL.createObjectURL(f);
+          const row=document.createElement('div'); row.className='rec-docfile';
+          row.innerHTML='<span class="rec-dn">'+f.name+'</span><span class="rec-dz">'+fmtSize(f.size)+'</span>'+
+            '<a href="'+url+'" target="_blank" rel="noopener">apri</a><span class="rec-rm" title="rimuovi">\u2715</span>';
+          row.querySelector('.rec-rm').addEventListener('click',()=>{ URL.revokeObjectURL(url); recDocs[key].splice(i,1); renderDocs(); });
+          list.appendChild(row);
+        });
+      });
+      $('#recDocStat').textContent = count ? (count+' file \u00b7 '+fmtSize(total)) : 'Nessun documento caricato.';
+    }
+    async function buildZip(){
+      if(typeof JSZip==='undefined'){ $('#recDocStat').textContent='Libreria ZIP non caricata (sei offline?). Scarica i PDF singoli con "apri".'; return; }
+      const zip=new JSZip(); let count=0;
+      for(const [key,label] of DOC_CATS){
+        if(!recDocs[key].length) continue;
+        const folder=zip.folder(label);
+        for(const f of recDocs[key]){ folder.file(f.name, await f.arrayBuffer()); count++; }
+      }
+      if(!count){ $('#recDocStat').textContent='Nessun documento da impacchettare.'; return; }
+      const blob=await zip.generateAsync({type:'blob'});
+      downloadBlob(blob,'documenti_'+slug($('#recMese').value)+'.zip');
+      $('#recDocStat').textContent='ZIP scaricato ('+count+' file). Allegalo alla bozza email.';
+    }
+    function openMailDraft(){
+      const mese=$('#recMese').value.trim();
+      const to=$('#recDocTo').value.trim();
+      const subj=$('#recDocSubject').value.trim() || ('Documenti'+(mese?(' '+mese):'')+' \u2014 Gestionale Taxi');
+      const lines=['Buongiorno,','',(mese?('in allegato i documenti di '+mese+':'):'in allegato i documenti:'),''];
+      let any=false;
+      DOC_CATS.forEach(([key,label])=>{ const n=recDocs[key].length; if(n){ lines.push('- '+label+': '+n+' file'); any=true; } });
+      if(!any) lines.push('- (nessun documento)');
+      lines.push('','Cordiali saluti');
+      const href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(lines.join('\n'));
+      window.location.href=href;
+    }
+    $('#recDocZip').addEventListener('click',buildZip);
+    $('#recDocMail').addEventListener('click',openMailDraft);
+    $('#recDocTo').addEventListener('input', ()=>{ recForm.docTo=$('#recDocTo').value; });
+    $('#recDocSubject').addEventListener('input', ()=>{ recForm.docSubject=$('#recDocSubject').value; });
+    buildDocCats();
+
+    async function handleBankFile(ev){
+      const file=ev.target.files[0]; if(!file) return;
+      try{
+        const data=await readFile(file);
+        const out=processBank(data);
+        if(!out){ $('#recBankStat').textContent='Movimenti non riconosciuti (attese colonne "Importo" e "Descrizione").'; return; }
+        recLines=out;
+        $('#recBankStat').innerHTML='Movimenti BPM: <b>'+out.length+'</b> righe caricate.';
+        $('#recResultsSec').style.display='';
+        render();
+      }catch(e){
+        $('#recBankStat').textContent = (e==='xlsx') ? 'Excel non leggibile ora (offline?): salvalo come CSV e ricaricalo.' : 'File non leggibile.';
+      }
+    }
+    $('#recFileBank').addEventListener('change',handleBankFile);
+
+    function analyze(){
+      const raw=$('#recBank').value.split(/\n/);
+      recForm.bankPaste = $('#recBank').value;
+      const dateRe=/^\s*\d{2}\/\d{2}\/\d{2}\b/;
+      const movs=[]; let cur=null;
+      for(const l of raw){
+        if(dateRe.test(l)){ if(cur)movs.push(cur); cur={first:l,full:l}; }
+        else if(cur){ cur.full+=' '+l.trim(); }
+      }
+      if(cur)movs.push(cur);
+      recLines=movs.map(m=>{
+        const amount=firstAmount(m.first);
+        if(amount===null||/SALDO INIZIALE|SALDO FINALE/i.test(m.full)) return null;
+        const U=m.full.toUpperCase(); const cat=classify(U,amount);
+        const sub=(cat==='nexi')?(U.includes('BANCOMAT')?'Bancomat':'Circuiti internaz./APM'):'';
+        const code=(cat==='nexi')?((U.match(CODE)||[])[1]||''):'';
+        const desc=m.full.replace(/^\s*(\d{2}\/\d{2}\/\d{2}\s*){1,3}/,'').replace(MONEY,'').replace(/-\s+/,'').trim();
+        return {full:m.full,desc,amount,cat,sub,code};
+      }).filter(Boolean);
+      $('#recResultsSec').style.display='';
+      render();
+    }
+
+    function renderSettlements(tol){
+      const box=$('#recSettleBox'), list=$('#recSettleList'), sum=$('#recSettleSum');
+      const nexiLines=recLines.filter(l=>l.cat==='nexi');
+      if(!recNexiRep || !nexiLines.length){ box.style.display='none'; return; }
+      const bank={};
+      nexiLines.forEach(l=>{ if(l.code) bank[l.code]=(bank[l.code]||0)+Math.abs(l.amount); });
+      const bankCodes=Object.keys(bank);
+      if(!bankCodes.length){ box.style.display='none'; return; }
+      const keys=bankCodes.map(codeKey).sort();
+      const lo=keys[0], hi=keys[keys.length-1];
+      const rows=[];
+      Object.keys(recNexiRep.byCode).forEach(code=>{
+        const k=codeKey(code); if(k<lo||k>hi) return;
+        const exp=recNexiRep.byCode[code]; const found=bank[code]||0;
+        const ok=Math.abs(found-exp)<=Math.max(tol,0.02);
+        rows.push({code,k,exp,found,ok,missing:found===0});
+      });
+      if(!rows.length){ box.style.display='none'; return; }
+      const miss=rows.filter(r=>!r.ok);
+      box.style.display='';
+      sum.className='rec-settle-sum '+(miss.length?'bad':'ok');
+      sum.textContent=miss.length?(miss.length+' da verificare su '+rows.length):(rows.length+' accrediti, tutti presenti \u2713');
+      rows.sort((a,b)=>(a.ok===b.ok)?(a.k<b.k?-1:1):(a.ok?1:-1));
+      list.innerHTML=rows.map(r=>
+        '<div class="rec-srow '+(r.ok?'ok':'miss')+'">'+
+          '<span class="rec-tick">'+(r.ok?'\u2713':(r.missing?'\u2717':'!'))+'</span>'+
+          '<span class="rec-sd">'+codePretty(r.code)+'</span>'+
+          '<span class="rec-se">att. '+eur.format(r.exp)+'</span>'+
+          '<span class="rec-sb">'+(r.missing?'&mdash;':eur.format(r.found))+'</span>'+
+        '</div>').join('');
+    }
+
+    function render(){
+      const tol=Math.abs(parseAmountField($('#recTol').value))||0.02;
+      recForm.tol=$('#recTol').value;
+      const flowsEl=$('#recFlows'); flowsEl.innerHTML='';
+      let issues=0,any=false;
+      ['amex','nexi','comm'].forEach(cat=>{
+        const info=LABELS[cat];
+        const rows=recLines.filter(l=>l.cat===cat);
+        const bank=rows.reduce((a,b)=>a+Math.abs(b.amount),0);
+        const expRaw=$(info.exp).value.trim();
+        const exp=Math.abs(parseAmountField(expRaw));
+        const hasExp=expRaw!==''; const delta=bank-exp; const ok=hasExp&&Math.abs(delta)<=tol;
+        if(rows.length||hasExp) any=true;
+        let badge,bcls;
+        if(!hasExp&&!rows.length){badge='&mdash;';bcls='empty';}
+        else if(ok){badge='torna';bcls='ok';}
+        else{badge='scarto';bcls='diff';issues++;}
+        const dCls=Math.abs(delta)<=tol?'':(delta>0?'pos':'neg'); const dSign=delta>0?'+':'';
+        let subline=info.sub;
+        if(cat==='nexi'&&rows.length){
+          const bc=rows.filter(r=>r.sub==='Bancomat').reduce((a,b)=>a+b.amount,0);
+          const ci=rows.filter(r=>r.sub!=='Bancomat').reduce((a,b)=>a+b.amount,0);
+          subline='Bancomat '+eur.format(bc)+' &middot; Circuiti '+eur.format(ci);
+        }
+        const el=document.createElement('div'); el.className='rec-flow';
+        el.innerHTML='<div class="rec-flow-top"><div class="rec-flow-name">'+info.name+
+          '<span class="rec-sub2">'+subline+' &middot; '+rows.length+' mov.</span></div>'+
+          '<span class="rec-badge '+bcls+'">'+badge+'</span></div>'+
+          '<div class="rec-flow-nums">'+
+          '<div class="rec-num-cell"><div class="rec-lbl">Atteso report</div><div class="rec-val">'+(hasExp?eur.format(exp):'&mdash;')+'</div></div>'+
+          '<div class="rec-num-cell bank"><div class="rec-lbl">In banca</div><div class="rec-val">'+eur.format(bank)+'</div></div>'+
+          '<div class="rec-num-cell delta"><div class="rec-lbl">Differenza</div><div class="rec-val '+dCls+'">'+(hasExp?dSign+eur.format(delta):'&mdash;')+'</div></div>'+
+          '</div>';
+        flowsEl.appendChild(el);
+      });
+
+      const taxi=recLines.filter(l=>l.cat==='taxi');
+      const infoEl=$('#recInfoBox'); infoEl.innerHTML='';
+      if(taxi.length){
+        const t=taxi.reduce((a,b)=>a+b.amount,0);
+        infoEl.innerHTML='<div class="rec-info-line"><span>Altri incassi non-carta (buoni taxi) &middot; '+taxi.length+'</span><span class="v">'+eur.format(t)+'</span></div>';
+      }
+
+      renderSettlements(tol);
+
+      const altro=recLines.filter(l=>l.cat==='altroc');
+      const box=$('#recUnclassBox'),list=$('#recUnclassList');
+      if(altro.length){
+        box.style.display=''; list.innerHTML='';
+        altro.forEach(l=>{
+          const idx=recLines.indexOf(l); const row=document.createElement('div'); row.className='rec-uline';
+          row.innerHTML='<span class="rec-udesc">'+(l.desc||l.full)+'</span>'+
+            '<span class="rec-uamt">'+eur.format(Math.abs(l.amount))+'</span>'+
+            '<select data-i="'+idx+'"><option value="altroc" selected>&mdash;</option>'+
+            '<option value="amex">Amex</option><option value="nexi">Nexi</option>'+
+            '<option value="comm">Commiss.</option><option value="taxi">Altro incasso</option></select>';
+          list.appendChild(row);
+        });
+        list.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',e=>{recLines[+e.target.dataset.i].cat=e.target.value;render();}));
+      } else box.style.display='none';
+
+      const det=$('#recDetail'); det.innerHTML='';
+      [['amex','American Express'],['nexi','Nexi \u2014 accrediti lordi'],['comm','Nexi \u2014 commissioni'],['taxi','Altri incassi']].forEach(([cat,lbl])=>{
+        const rows=recLines.filter(l=>l.cat===cat); if(!rows.length)return;
+        const g=document.createElement('div'); g.className='rec-grp';
+        g.innerHTML='<div class="rec-grp-h">'+lbl+'</div>'+rows.map(r=>'<div class="rec-dline"><span class="rec-dd">'+(r.desc||r.full)+'</span><span class="rec-da">'+eur.format(Math.abs(r.amount))+'</span></div>').join('');
+        det.appendChild(g);
+      });
+      $('#recDetailBox').style.display=recLines.length?'':'none';
+
+      const v=$('#recVerdict'),h=$('#recVerdictHead'),n=$('#recVerdictNote');
+      v.classList.remove('idle','ok','issue');
+      const settleMiss=$('#recSettleBox').style.display!=='none' && /da verificare/.test($('#recSettleSum').textContent);
+      if(!any&&!recLines.length){
+        v.classList.add('idle'); h.innerHTML='In attesa dei dati';
+        n.textContent='Carica i report e i movimenti della banca.';
+      } else if(issues===0&&altro.length===0&&!settleMiss){
+        v.classList.add('ok'); h.innerHTML='<span class="rec-mark">&#10003;</span> Tutto accreditato';
+        n.textContent='Flussi e singoli accrediti coincidono con i report entro tolleranza.';
+      } else {
+        v.classList.add('issue');
+        const parts=[];
+        if(issues) parts.push(issues+(issues===1?' flusso con scarto':' flussi con scarto'));
+        if(settleMiss) parts.push('accrediti Nexi da verificare');
+        if(altro.length) parts.push(altro.length+(altro.length===1?' riga da assegnare':' righe da assegnare'));
+        h.innerHTML='<span class="rec-mark">!</span> Da verificare';
+        n.textContent=parts.join(' \u00b7 ')+'.';
+      }
+    }
+
+    $('#recRun').addEventListener('click',analyze);
+    $('#recClear').addEventListener('click',()=>{
+      $('#recBank').value=''; recForm.bankPaste=''; recLines=[]; $('#recResultsSec').style.display='none';
+      const v=$('#recVerdict');v.classList.remove('ok','issue');v.classList.add('idle');
+      $('#recVerdictHead').innerHTML='In attesa dei dati';$('#recVerdictNote').textContent='Carica i report e i movimenti della banca.';
+    });
+    $('#recMese').addEventListener('input', ()=>{ recForm.mese=$('#recMese').value; });
+    [['#recExpAmex','expAmex'],['#recExpNexi','expNexi'],['#recExpComm','expComm'],['#recTol','tol']].forEach(([id,key])=>{
+      $(id).addEventListener('input',()=>{ recForm[key]=$(id).value; if(recLines.length)render(); });
+    });
+    [['#recKwAmex','kwAmex'],['#recKwNexi','kwNexi'],['#recKwTaxi','kwTaxi']].forEach(([id,key])=>{
+      $(id).addEventListener('input',()=>{ recForm[key]=$(id).value; if(recLines.length)analyze(); });
+    });
+
+    // Ripristino subito i risultati già calcolati, se l'utente torna su questa tab
+    if(recNexiRep||recAmexRep) renderCommissions();
+    if(recLines.length){ $('#recResultsSec').style.display=''; render(); }
+  };
 })();
 </script>
 <script>
