@@ -1495,7 +1495,7 @@
   };
 
   // ---------- State ----------
-  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, pagamenti: [], speseRicorrenti: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
+  let state = { days: {}, months: {}, years: {}, deadlines: [], reports: [], scansioni: [], eventi: {}, pagamenti: [], speseRicorrenti: [], corrispettiviGenerati: [], invii: [], settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)) };
   let viewDate = new Date(); viewDate.setHours(0,0,0,0);
   let activeTab = 'oggi';
   let riepilogoMonth = new Date(); riepilogoMonth.setDate(1);
@@ -1545,6 +1545,8 @@
     state.eventi = parsed.eventi || {};
     state.pagamenti = parsed.pagamenti || [];
     state.speseRicorrenti = parsed.speseRicorrenti || [];
+    state.corrispettiviGenerati = parsed.corrispettiviGenerati || [];
+    state.invii = parsed.invii || [];
     state.updatedAt = parsed.updatedAt || null;
     state.settings = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SETTINGS)), parsed.settings || {});
     state.settings.tracciato = Object.assign({}, DEFAULT_SETTINGS.tracciato, (parsed.settings && parsed.settings.tracciato) || {});
@@ -2799,6 +2801,17 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     btn.replaceWith(wrap);
   }
 
+  // Tiene traccia di quali periodi dei corrispettivi sono già stati generati (solo metadati, niente
+  // byte del PDF: si rigenera al volo quando serve per lo ZIP, per non appesantire il salvataggio).
+  function trackCorrispettivoGenerato(year, month){
+    if(!state.corrispettiviGenerati) state.corrispettiviGenerati = [];
+    const id = month==null ? `libro-${year}` : `mese-${year}-${month}`;
+    const label = month==null ? `Libro annuale ${year}` : `${MESI_FULL[month]} ${year}`;
+    const existing = state.corrispettiviGenerati.find(x=>x.id===id);
+    if(existing){ existing.generatedAt = Date.now(); }
+    else { state.corrispettiviGenerati.push({ id, year, month, label, generatedAt: Date.now() }); }
+  }
+
   async function exportModuloMese(year, month, btn){
     if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
     if(!state.settings.registro.conducente){ showToast('Imposta prima l\'intestazione del registro'); openRegistroSheet(); return; }
@@ -2810,6 +2823,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const filename = `corrispettivi-${MESI[month]}-${year}.pdf`;
     btn.disabled = false;
     replaceWithOpenLink(btn, blob, filename);
+    trackCorrispettivoGenerato(year, month);
+    await saveState();
     showToast('PDF pronto, tocca il link per aprirlo');
   }
 
@@ -2830,8 +2845,57 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const filename = `libro-corrispettivi-${year}.pdf`;
     btn.disabled = false;
     replaceWithOpenLink(btn, blob, filename);
+    trackCorrispettivoGenerato(year, null);
+    await saveState();
     showToast('Libro pronto, tocca il link per aprirlo');
   }
+
+  // Esposti per la sezione Riconciliazione (IIFE separata): rigenerazione al volo dei PDF corrispettivi
+  // già prodotti, ed elenco dei periodi disponibili, senza duplicare i byte nello stato salvato.
+  window.getCorrispettiviGenerati = function(){ return (state.corrispettiviGenerati||[]).slice().sort((a,b)=>b.generatedAt-a.generatedAt); };
+  window.rimuoviCorrispettivoGenerato = async function(id){
+    state.corrispettiviGenerati = (state.corrispettiviGenerati||[]).filter(x=>x.id!==id);
+    await saveState();
+  };
+  window.rigeneraCorrispettivoPdf = async function(id){
+    const rec = (state.corrispettiviGenerati||[]).find(x=>x.id===id);
+    if(!rec) return null;
+    if(!window.PDFLib) throw new Error('Libreria PDF non caricata');
+    if(rec.month==null){
+      const { PDFDocument } = PDFLib;
+      const outDoc = await PDFDocument.create();
+      for(let mo=0; mo<12; mo++){
+        const filled = await fillCorrispettiviTemplate(rec.year, mo);
+        const [copiedPage] = await outDoc.copyPages(filled, [0]);
+        outDoc.addPage(copiedPage);
+      }
+      const bytes = await outDoc.save();
+      return { bytes, filename: `libro-corrispettivi-${rec.year}.pdf` };
+    } else {
+      const pdfDoc = await fillCorrispettiviTemplate(rec.year, rec.month);
+      const bytes = await pdfDoc.save();
+      return { bytes, filename: `corrispettivi-${MESI[rec.month]}-${rec.year}.pdf` };
+    }
+  };
+  // Storico invii: un log leggero (solo riepilogo, niente allegati) di ogni invio fatto dalla sezione
+  // Riconciliazione, per avere un registro di tutta la contabilità spedita nell'anno.
+  window.registraInvio = async function(payload){
+    if(!state.invii) state.invii = [];
+    state.invii.push(Object.assign({ id: 'invio-'+Date.now(), createdAt: Date.now() }, payload));
+    await saveState();
+  };
+  window.getInvii = function(){ return (state.invii||[]).slice().sort((a,b)=>b.createdAt-a.createdAt); };
+  // Totale delle corse scansionate pagate con Buoni: deve corrispondere ai bonifici "cambio buoni corse"
+  // di TaxiBlu che arrivano in banca (usato nella sezione Riconciliazione per il confronto automatico).
+  window.getBuoniScansioniTotale = function(){
+    let totale=0, count=0;
+    (state.scansioni||[]).forEach(s=>{
+      if(s.metodo==='Buoni'){ totale += parseFloat(String(s.prezzo).replace(',','.'))||0; count++; }
+    });
+    return { totale, count };
+  };
+
+
 
   // ---------- Scansione corse (OCR gratuito lato client, con revisione manuale) ----------
   // Corregge gli scambi tipici dell'OCR quando il contesto è certamente numerico
@@ -5752,7 +5816,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   <div class="card" id="recResultsSec" style="display:none;">
     <h2>III · Riconciliazione</h2>
     <div id="recFlows"></div>
-    <div id="recInfoBox"></div>
     <div class="rec-settle" id="recSettleBox" style="display:none;">
       <div class="rec-settle-h"><span class="t">Accrediti Nexi &mdash; atteso vs trovato</span><span class="rec-settle-sum" id="recSettleSum"></span></div>
       <div id="recSettleList"></div>
@@ -5774,17 +5837,23 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
   <div class="card" id="recDocSec">
     <h2>V · Documenti</h2>
-    <p class="rec-doc-intro">Carica i PDF divisi per tipologia. Poi generi lo ZIP (cartelle per tipologia) e apri la bozza email gi&agrave; compilata: alleghi lo ZIP e invii.</p>
+    <p class="rec-doc-intro">Carica i PDF divisi per tipologia. I corrispettivi generati dal gestionale confluiscono qui da soli, gi&agrave; pronti da spuntare. Poi generi lo ZIP (cartelle per tipologia) e apri la bozza email gi&agrave; compilata: alleghi lo ZIP e invii.</p>
     <div id="recDocCats"></div>
     <div class="rec-doc-email">
       <input id="recDocTo" type="email" placeholder="Destinatario (es. commercialista@studio.it)" autocomplete="off">
       <input id="recDocSubject" type="text" placeholder="Oggetto (lascia vuoto per auto)" autocomplete="off">
       <div class="rec-controls" style="margin-top:0;">
         <button class="save-btn" id="recDocZip" style="width:auto; padding:12px 22px;">&#8681; Scarica tutto (ZIP)</button>
-        <button class="save-btn secondary" id="recDocMail" style="width:auto; padding:11px 16px;">&#9993; Bozza email</button>
+        <button class="save-btn secondary" id="recDocMail" style="width:auto; padding:11px 16px;">&#128279; Condividi (allega e apri Mail)</button>
       </div>
       <span class="rec-doc-stat" id="recDocStat">Nessun documento caricato.</span>
     </div>
+  </div>
+
+  <div class="card" id="recInviiSec">
+    <h2>Contabilit&agrave; inviata &middot; anno in corso</h2>
+    <p class="rec-doc-intro">Ogni volta che apri una bozza email da qui, viene registrato uno storico di cosa hai inviato e quando &mdash; per avere sempre sotto mano tutta la contabilit&agrave; spedita nell'anno.</p>
+    <div id="recInviiList"></div>
   </div>
 
   <div class="card">
@@ -5820,6 +5889,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     ['altro','Altro',false]
   ];
   const recDocs={}; DOC_CATS.forEach(([k])=>recDocs[k]=[]);
+  const recCorrSelected = new Set(); // id dei periodi corrispettivi generati inclusi nello ZIP
 
   // ---------- Funzioni pure (nessun accesso al DOM): logica identica all'originale ----------
   function parseAmountField(str){
@@ -5971,7 +6041,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   const LABELS={
     amex:{name:'American Express',sub:'accrediti al netto',exp:'#recExpAmex',key:'expAmex'},
     nexi:{name:'Nexi',sub:'accrediti lordi',exp:'#recExpNexi',key:'expNexi'},
-    comm:{name:'Nexi \u2014 commissioni',sub:'addebito SDD',exp:'#recExpComm',key:'expComm'}
+    comm:{name:'Nexi \u2014 commissioni',sub:'addebito SDD',exp:'#recExpComm',key:'expComm'},
+    taxi:{name:'TaxiBlu (buoni corse)',sub:'accrediti cambio buoni',auto:true}
   };
 
   // ---------- Rendering: ricostruito ogni volta che si apre la tab, ma legge/riscrive lo stato persistente sopra ----------
@@ -6091,67 +6162,164 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         el.innerHTML='<div class="rec-doccat-h"><div class="rec-doccat-name">'+label+
           (gen?'<span class="rec-gen">dal gestionale</span>':'')+'</div>'+
           '<label class="rec-filebtn sm">+ PDF<input type="file" accept="application/pdf,.pdf" multiple data-cat="'+key+'"></label></div>'+
+          (gen?'<div class="rec-corr-list" data-cat="'+key+'"></div>':'')+
           '<div class="rec-doccat-list" data-cat="'+key+'"></div>';
         host.appendChild(el);
       });
       host.querySelectorAll('input[type=file]').forEach(inp=>{
         inp.addEventListener('change',e=>{
           const key=e.target.dataset.cat;
-          [...e.target.files].forEach(f=>{ if(/pdf$/i.test(f.name)||f.type==='application/pdf') recDocs[key].push(f); });
+          [...e.target.files].forEach(f=>{ if(/pdf$/i.test(f.name)||f.type==='application/pdf') recDocs[key].push({ file:f, selected:true }); });
           e.target.value=''; renderDocs();
         });
       });
       renderDocs();
     }
+    function renderCorrGenerati(){
+      const list=$('.rec-corr-list[data-cat="corrispettivi"]'); if(!list) return;
+      const generati = (typeof window.getCorrispettiviGenerati==='function') ? window.getCorrispettiviGenerati() : [];
+      if(!generati.length){ list.innerHTML='<span class="rec-doc-empty">nessun corrispettivo generato ancora dal gestionale</span>'; return; }
+      list.innerHTML='';
+      generati.forEach(g=>{
+        if(!recCorrSelected.has(g.id) && !recCorrSelected.has('_init_'+g.id)){
+          recCorrSelected.add(g.id); // selezionati di default
+        }
+        const row=document.createElement('div'); row.className='rec-docfile';
+        row.innerHTML='<input type="checkbox" '+(recCorrSelected.has(g.id)?'checked':'')+' style="flex:none; cursor:pointer;">'+
+          '<span class="rec-dn">'+g.label+'</span>'+
+          '<span class="rec-dz">generato '+new Date(g.generatedAt).toLocaleDateString('it-IT')+'</span>'+
+          '<span class="rec-rm" title="elimina, se errato">\u2715</span>';
+        row.querySelector('input').addEventListener('change',e=>{
+          if(e.target.checked) recCorrSelected.add(g.id); else recCorrSelected.delete(g.id);
+          renderDocs();
+        });
+        row.querySelector('.rec-rm').addEventListener('click', async ()=>{
+          if(typeof window.rimuoviCorrispettivoGenerato==='function') await window.rimuoviCorrispettivoGenerato(g.id);
+          recCorrSelected.delete(g.id);
+          renderDocs();
+        });
+        list.appendChild(row);
+      });
+    }
     function renderDocs(){
       let total=0,count=0;
+      renderCorrGenerati();
+      const generati = (typeof window.getCorrispettiviGenerati==='function') ? window.getCorrispettiviGenerati() : [];
+      count += generati.filter(g=>recCorrSelected.has(g.id)).length;
       DOC_CATS.forEach(([key])=>{
         const list=$('.rec-doccat-list[data-cat="'+key+'"]'); if(!list) return;
         const arr=recDocs[key];
-        if(!arr.length){ list.innerHTML='<span class="rec-doc-empty">nessun file</span>'; return; }
+        if(!arr.length){ list.innerHTML = (key==='corrispettivi' ? '' : '<span class="rec-doc-empty">nessun file</span>'); return; }
         list.innerHTML='';
-        arr.forEach((f,i)=>{
-          total+=f.size; count++;
+        arr.forEach((entry,i)=>{
+          const f = entry.file;
+          total+=f.size; if(entry.selected) count++;
           const url=URL.createObjectURL(f);
           const row=document.createElement('div'); row.className='rec-docfile';
-          row.innerHTML='<span class="rec-dn">'+f.name+'</span><span class="rec-dz">'+fmtSize(f.size)+'</span>'+
-            '<a href="'+url+'" target="_blank" rel="noopener">apri</a><span class="rec-rm" title="rimuovi">\u2715</span>';
+          row.innerHTML='<input type="checkbox" '+(entry.selected?'checked':'')+' style="flex:none; cursor:pointer;">'+
+            '<span class="rec-dn">'+f.name+'</span><span class="rec-dz">'+fmtSize(f.size)+'</span>'+
+            '<a href="'+url+'" target="_blank" rel="noopener">apri</a><span class="rec-rm" title="elimina, se errato">\u2715</span>';
+          row.querySelector('input').addEventListener('change',e=>{ entry.selected = e.target.checked; renderDocs(); });
           row.querySelector('.rec-rm').addEventListener('click',()=>{ URL.revokeObjectURL(url); recDocs[key].splice(i,1); renderDocs(); });
           list.appendChild(row);
         });
       });
-      $('#recDocStat').textContent = count ? (count+' file \u00b7 '+fmtSize(total)) : 'Nessun documento caricato.';
+      $('#recDocStat').textContent = count ? (count+' file selezionati \u00b7 '+fmtSize(total)) : 'Nessun documento selezionato per l\'invio.';
+    }
+    async function buildZipBlob(){
+      if(typeof JSZip==='undefined'){ return { error:'Libreria ZIP non caricata (sei offline?). Scarica i PDF singoli con "apri".' }; }
+      const zip=new JSZip(); let count=0;
+      // Corrispettivi generati dal gestionale: rigenerati al volo, non tenuti in memoria permanente
+      const generati = (typeof window.getCorrispettiviGenerati==='function') ? window.getCorrispettiviGenerati() : [];
+      const selezionati = generati.filter(g=>recCorrSelected.has(g.id));
+      if(selezionati.length && typeof window.rigeneraCorrispettivoPdf==='function'){
+        const folder=zip.folder('Corrispettivi');
+        for(const g of selezionati){
+          try{
+            const out = await window.rigeneraCorrispettivoPdf(g.id);
+            if(out){ folder.file(out.filename, out.bytes); count++; }
+          }catch(e){ console.warn('Rigenerazione corrispettivo fallita', g.id, e); }
+        }
+      }
+      for(const [key,label] of DOC_CATS){
+        const selezionatiKey = recDocs[key].filter(e=>e.selected);
+        if(!selezionatiKey.length) continue;
+        const folder=zip.folder(label);
+        for(const entry of selezionatiKey){ folder.file(entry.file.name, await entry.file.arrayBuffer()); count++; }
+      }
+      if(!count){ return { error:'Nessun documento selezionato da impacchettare.' }; }
+      const blob=await zip.generateAsync({type:'blob'});
+      const nomeZip = 'documenti_'+slug($('#recMese').value)+'.zip';
+      return { blob, count, nomeZip };
     }
     async function buildZip(){
-      if(typeof JSZip==='undefined'){ $('#recDocStat').textContent='Libreria ZIP non caricata (sei offline?). Scarica i PDF singoli con "apri".'; return; }
-      const zip=new JSZip(); let count=0;
-      for(const [key,label] of DOC_CATS){
-        if(!recDocs[key].length) continue;
-        const folder=zip.folder(label);
-        for(const f of recDocs[key]){ folder.file(f.name, await f.arrayBuffer()); count++; }
-      }
-      if(!count){ $('#recDocStat').textContent='Nessun documento da impacchettare.'; return; }
-      const blob=await zip.generateAsync({type:'blob'});
-      downloadBlob(blob,'documenti_'+slug($('#recMese').value)+'.zip');
-      $('#recDocStat').textContent='ZIP scaricato ('+count+' file). Allegalo alla bozza email.';
+      const res = await buildZipBlob();
+      if(res.error){ $('#recDocStat').textContent = res.error; return; }
+      downloadBlob(res.blob, res.nomeZip);
+      $('#recDocStat').textContent='ZIP scaricato ('+res.count+' file).';
     }
-    function openMailDraft(){
+    function riepilogoCategorie(){
+      const generati = (typeof window.getCorrispettiviGenerati==='function') ? window.getCorrispettiviGenerati() : [];
+      const nCorr = generati.filter(g=>recCorrSelected.has(g.id)).length;
+      const cats = [];
+      if(nCorr) cats.push({ label:'Corrispettivi', count:nCorr });
+      DOC_CATS.forEach(([key,label])=>{ const n=recDocs[key].filter(e=>e.selected).length; if(n) cats.push({ label, count:n }); });
+      return cats;
+    }
+    // Condividi: allega lo ZIP e apre il foglio di condivisione nativo (scegli Gmail/Mail) —
+    // parte da una mail nuova con l'allegato già pronto, inviata dal tuo account vero.
+    async function condividiZip(){
+      const res = await buildZipBlob();
+      if(res.error){ $('#recDocStat').textContent = res.error; return; }
       const mese=$('#recMese').value.trim();
       const to=$('#recDocTo').value.trim();
       const subj=$('#recDocSubject').value.trim() || ('Documenti'+(mese?(' '+mese):'')+' \u2014 Gestionale Taxi');
-      const lines=['Buongiorno,','',(mese?('in allegato i documenti di '+mese+':'):'in allegato i documenti:'),''];
-      let any=false;
-      DOC_CATS.forEach(([key,label])=>{ const n=recDocs[key].length; if(n){ lines.push('- '+label+': '+n+' file'); any=true; } });
-      if(!any) lines.push('- (nessun documento)');
-      lines.push('','Cordiali saluti');
-      const href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(lines.join('\n'));
-      window.location.href=href;
+      const cats = riepilogoCategorie();
+      const testo = 'Buongiorno, invio i documenti in mio possesso.\n\nCordiali saluti';
+      try{
+        const file = new File([res.blob], res.nomeZip, { type:'application/zip' });
+        if(navigator.canShare && navigator.canShare({ files:[file] })){
+          await navigator.share({ files:[file], title: subj, text: testo });
+          $('#recDocStat').textContent = 'Condiviso ('+res.count+' file nello ZIP). Scegli la tua app email dal foglio di condivisione.';
+        } else {
+          $('#recDocStat').textContent = 'Condivisione non supportata su questo dispositivo: usa "Scarica tutto (ZIP)" e allega a mano.';
+          return;
+        }
+      }catch(e){
+        if(e && e.name === 'AbortError') return; // condivisione annullata dall'utente: non registro nulla
+        $('#recDocStat').textContent = 'Condivisione non riuscita: usa "Scarica tutto (ZIP)" e allega a mano.';
+        return;
+      }
+      if(cats.length && typeof window.registraInvio==='function'){
+        await window.registraInvio({ periodo: mese || null, destinatario: to || null, oggetto: subj, categorie: cats, anno: new Date().getFullYear() });
+        renderStoricoInvii();
+      }
     }
     $('#recDocZip').addEventListener('click',buildZip);
-    $('#recDocMail').addEventListener('click',openMailDraft);
+    $('#recDocMail').addEventListener('click',condividiZip);
     $('#recDocTo').addEventListener('input', ()=>{ recForm.docTo=$('#recDocTo').value; });
     $('#recDocSubject').addEventListener('input', ()=>{ recForm.docSubject=$('#recDocSubject').value; });
     buildDocCats();
+
+    function renderStoricoInvii(){
+      const box=$('#recInviiList'); if(!box) return;
+      const invii = (typeof window.getInvii==='function') ? window.getInvii() : [];
+      const annoSel = new Date().getFullYear();
+      const delAnno = invii.filter(i=>i.anno===annoSel);
+      if(!delAnno.length){ box.innerHTML = '<span class="rec-doc-empty">Nessun invio registrato per il '+annoSel+'.</span>'; return; }
+      box.innerHTML = delAnno.map(i=>{
+        const data = new Date(i.createdAt).toLocaleString('it-IT');
+        const cats = (i.categorie||[]).map(c=>c.label+' ('+c.count+')').join(', ');
+        return '<div class="rec-dline" style="flex-direction:column; align-items:flex-start; gap:2px;">'+
+          '<div style="display:flex; justify-content:space-between; width:100%;"><span class="rec-dd" style="white-space:normal;">'+
+          (i.periodo?escapeRec(i.periodo):'—')+(i.destinatario?' &rarr; '+escapeRec(i.destinatario):'')+'</span>'+
+          '<span class="rec-da">'+data+'</span></div>'+
+          '<div style="color:var(--ink-faint); font-size:11.5px;">'+escapeRec(cats||'—')+'</div>'+
+        '</div>';
+      }).join('');
+    }
+    function escapeRec(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+    renderStoricoInvii();
 
     async function handleBankFile(ev){
       const file=ev.target.files[0]; if(!file) return;
@@ -6229,13 +6397,21 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       recForm.tol=$('#recTol').value;
       const flowsEl=$('#recFlows'); flowsEl.innerHTML='';
       let issues=0,any=false;
-      ['amex','nexi','comm'].forEach(cat=>{
+      ['amex','nexi','comm','taxi'].forEach(cat=>{
         const info=LABELS[cat];
         const rows=recLines.filter(l=>l.cat===cat);
         const bank=rows.reduce((a,b)=>a+Math.abs(b.amount),0);
-        const expRaw=$(info.exp).value.trim();
-        const exp=Math.abs(parseAmountField(expRaw));
-        const hasExp=expRaw!==''; const delta=bank-exp; const ok=hasExp&&Math.abs(delta)<=tol;
+        let exp, hasExp, extraNote='';
+        if(info.auto){
+          const buoni = (typeof window.getBuoniScansioniTotale==='function') ? window.getBuoniScansioniTotale() : {totale:0,count:0};
+          exp = buoni.totale; hasExp = buoni.count>0;
+          extraNote = buoni.count+' corse a buoni scansionate';
+        } else {
+          const expRaw=$(info.exp).value.trim();
+          exp=Math.abs(parseAmountField(expRaw));
+          hasExp=expRaw!=='';
+        }
+        const delta=bank-exp; const ok=hasExp&&Math.abs(delta)<=tol;
         if(rows.length||hasExp) any=true;
         let badge,bcls;
         if(!hasExp&&!rows.length){badge='&mdash;';bcls='empty';}
@@ -6248,24 +6424,18 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           const ci=rows.filter(r=>r.sub!=='Bancomat').reduce((a,b)=>a+b.amount,0);
           subline='Bancomat '+eur.format(bc)+' &middot; Circuiti '+eur.format(ci);
         }
+        if(cat==='taxi'&&extraNote) subline=extraNote;
         const el=document.createElement('div'); el.className='rec-flow';
         el.innerHTML='<div class="rec-flow-top"><div class="rec-flow-name">'+info.name+
           '<span class="rec-sub2">'+subline+' &middot; '+rows.length+' mov.</span></div>'+
           '<span class="rec-badge '+bcls+'">'+badge+'</span></div>'+
           '<div class="rec-flow-nums">'+
-          '<div class="rec-num-cell"><div class="rec-lbl">Atteso report</div><div class="rec-val">'+(hasExp?eur.format(exp):'&mdash;')+'</div></div>'+
+          '<div class="rec-num-cell"><div class="rec-lbl">'+(info.auto?'Atteso da Scansioni':'Atteso report')+'</div><div class="rec-val">'+(hasExp?eur.format(exp):'&mdash;')+'</div></div>'+
           '<div class="rec-num-cell bank"><div class="rec-lbl">In banca</div><div class="rec-val">'+eur.format(bank)+'</div></div>'+
           '<div class="rec-num-cell delta"><div class="rec-lbl">Differenza</div><div class="rec-val '+dCls+'">'+(hasExp?dSign+eur.format(delta):'&mdash;')+'</div></div>'+
           '</div>';
         flowsEl.appendChild(el);
       });
-
-      const taxi=recLines.filter(l=>l.cat==='taxi');
-      const infoEl=$('#recInfoBox'); infoEl.innerHTML='';
-      if(taxi.length){
-        const t=taxi.reduce((a,b)=>a+b.amount,0);
-        infoEl.innerHTML='<div class="rec-info-line"><span>Altri incassi non-carta (buoni taxi) &middot; '+taxi.length+'</span><span class="v">'+eur.format(t)+'</span></div>';
-      }
 
       renderSettlements(tol);
 
@@ -6286,7 +6456,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       } else box.style.display='none';
 
       const det=$('#recDetail'); det.innerHTML='';
-      [['amex','American Express'],['nexi','Nexi \u2014 accrediti lordi'],['comm','Nexi \u2014 commissioni'],['taxi','Altri incassi']].forEach(([cat,lbl])=>{
+      [['amex','American Express'],['nexi','Nexi \u2014 accrediti lordi'],['comm','Nexi \u2014 commissioni'],['taxi','TaxiBlu \u2014 buoni corse']].forEach(([cat,lbl])=>{
         const rows=recLines.filter(l=>l.cat===cat); if(!rows.length)return;
         const g=document.createElement('div'); g.className='rec-grp';
         g.innerHTML='<div class="rec-grp-h">'+lbl+'</div>'+rows.map(r=>'<div class="rec-dline"><span class="rec-dd">'+(r.desc||r.full)+'</span><span class="rec-da">'+eur.format(Math.abs(r.amount))+'</span></div>').join('');
