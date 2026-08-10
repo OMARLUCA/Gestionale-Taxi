@@ -1797,15 +1797,28 @@
     tf.innerHTML = `<div class="field"><label>Inizio turno</label><input type="time" id="shiftStartInput" value="${inizioVal}"></div>
       <div class="field"><label>Fine turno</label><input type="time" id="shiftEndInput" value="${fineVal}"></div>`;
     let shiftStartTO=null, shiftEndTO=null;
-    tf.querySelector('#shiftStartInput').addEventListener('input', (e)=>{
+    const startEl = tf.querySelector('#shiftStartInput');
+    const endEl = tf.querySelector('#shiftEndInput');
+    // Il salvataggio (che ricostruisce la card) avviene quando lasci davvero il campo (blur),
+    // così non interrompe la rotella nativa mentre la stai ancora usando. Il timer resta solo
+    // come rete di sicurezza, molto lungo, per il caso in cui il blur non scattasse.
+    startEl.addEventListener('input', (e)=>{
       const val = e.target.value;
       clearTimeout(shiftStartTO);
-      shiftStartTO = setTimeout(()=> setShiftStartManual(dayKey, val), 2000);
+      shiftStartTO = setTimeout(()=> setShiftStartManual(dayKey, val), 4000);
     });
-    tf.querySelector('#shiftEndInput').addEventListener('input', (e)=>{
+    startEl.addEventListener('blur', (e)=>{
+      clearTimeout(shiftStartTO);
+      setShiftStartManual(dayKey, e.target.value);
+    });
+    endEl.addEventListener('input', (e)=>{
       const val = e.target.value;
       clearTimeout(shiftEndTO);
-      shiftEndTO = setTimeout(()=> setShiftEndManual(dayKey, val), 2000);
+      shiftEndTO = setTimeout(()=> setShiftEndManual(dayKey, val), 4000);
+    });
+    endEl.addEventListener('blur', (e)=>{
+      clearTimeout(shiftEndTO);
+      setShiftEndManual(dayKey, e.target.value);
     });
     panel.appendChild(tf);
     const tfNote = document.createElement('div'); tfNote.className='subnote';
