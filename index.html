@@ -1721,7 +1721,23 @@
 
   // ---------- Shift capsule ----------
   let shiftDetailsExpanded = false;
+  function kmFineGiornoPrecedente(dayKey){
+    const d = new Date(dayKey+'T00:00:00');
+    d.setDate(d.getDate()-1);
+    const prev = state.days[dateKey(d)];
+    return (prev && typeof prev.kmEnd==='number') ? prev.kmEnd : null;
+  }
   function renderShiftCapsule(container, dayKey, day, isToday){
+    // Km inizio di default = km fine del giorno precedente, se non ancora impostato per oggi.
+    if(day.kmStart==null){
+      const prevEnd = kmFineGiornoPrecedente(dayKey);
+      if(prevEnd!=null){
+        const dReal = ensureDay(dayKey);
+        dReal.kmStart = prevEnd;
+        day = dReal;
+        saveState();
+      }
+    }
     const wrap = document.createElement('div'); wrap.className = 'shift-wrap';
     const cap = document.createElement('div');
     const isPaused = !!(day.shiftStart && !day.shiftEnd && day.pauseStart);
@@ -1780,8 +1796,17 @@
     const fineVal = day.shiftEnd ? new Date(day.shiftEnd).toTimeString().slice(0,5) : '';
     tf.innerHTML = `<div class="field"><label>Inizio turno</label><input type="time" id="shiftStartInput" value="${inizioVal}"></div>
       <div class="field"><label>Fine turno</label><input type="time" id="shiftEndInput" value="${fineVal}"></div>`;
-    tf.querySelector('#shiftStartInput').addEventListener('change', (e)=> setShiftStartManual(dayKey, e.target.value));
-    tf.querySelector('#shiftEndInput').addEventListener('change', (e)=> setShiftEndManual(dayKey, e.target.value));
+    let shiftStartTO=null, shiftEndTO=null;
+    tf.querySelector('#shiftStartInput').addEventListener('input', (e)=>{
+      const val = e.target.value;
+      clearTimeout(shiftStartTO);
+      shiftStartTO = setTimeout(()=> setShiftStartManual(dayKey, val), 900);
+    });
+    tf.querySelector('#shiftEndInput').addEventListener('input', (e)=>{
+      const val = e.target.value;
+      clearTimeout(shiftEndTO);
+      shiftEndTO = setTimeout(()=> setShiftEndManual(dayKey, val), 900);
+    });
     panel.appendChild(tf);
     const tfNote = document.createElement('div'); tfNote.className='subnote';
     tfNote.textContent = 'Se ti dimentichi di avviare o fermare il contatore, imposta qui l\'orario a mano.';
@@ -3103,7 +3128,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       id: 'pag-'+Date.now(),
       data: document.getElementById('pagDataInput').value || dateKey(new Date()),
       nota: document.getElementById('pagNotaInput').value.trim(),
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      confermato: false
     };
     if(!state.pagamenti) state.pagamenti = [];
     state.pagamenti.push(pag);
@@ -3837,11 +3863,24 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           const corse = list.filter(e=>e.pagamentoId===pag.id);
           const totPag = corse.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
           const pagCard = document.createElement('div'); pagCard.className='card';
+          if(!pag.confermato) pagCard.style.borderLeft = '3px solid var(--yellow-line)';
           const head = document.createElement('div');
           head.style.cssText='display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px;';
-          head.innerHTML = `<div><div style="font-weight:700; font-size:15px;">${fmtDataIt(pag.data)}${pag.nota?` — ${escapeHtml(pag.nota)}`:''}</div><div class="subnote" style="margin-top:2px;">${corse.length} ${corse.length===1?'corsa':'corse'}</div></div><div style="font-weight:700; font-size:16px;">${fmtMoney(totPag)} €</div>`;
+          head.innerHTML = `<div><div style="font-weight:700; font-size:15px;">${fmtDataIt(pag.data)}${pag.nota?` — ${escapeHtml(pag.nota)}`:''}</div><div class="subnote" style="margin-top:2px;">${corse.length} ${corse.length===1?'corsa':'corse'} ${pag.confermato?'· <span style="color:var(--green);">✓ Pagato</span>':'· <span style="color:var(--yellow);">in attesa</span>'}</div></div><div style="font-weight:700; font-size:16px;">${fmtMoney(totPag)} €</div>`;
           pagCard.appendChild(head);
           head.addEventListener('click', ()=>{ expandedPagamentoId = (expandedPagamentoId===pag.id) ? null : pag.id; renderMain(); });
+
+          const confRow = document.createElement('label');
+          confRow.style.cssText='display:flex; align-items:center; gap:9px; margin-top:10px; padding-top:10px; border-top:1px solid var(--border); cursor:pointer;';
+          confRow.innerHTML = `<input type="checkbox" ${pag.confermato?'checked':''} style="width:19px; height:19px; flex:none; accent-color:var(--green);"><span style="font-size:13.5px; color:var(--ink);">Segna come pagato (ricevuto davvero)</span>`;
+          confRow.querySelector('input').addEventListener('click', async (ev)=>{
+            ev.stopPropagation();
+            pag.confermato = ev.target.checked;
+            await saveState();
+            renderMain();
+          });
+          pagCard.appendChild(confRow);
+
           if(expandedPagamentoId===pag.id){
             const body = document.createElement('div'); body.style.marginTop='12px';
             corse.sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
