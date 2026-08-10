@@ -1764,7 +1764,7 @@
       info.innerHTML = `<div class="status">In servizio</div><div class="timer" id="liveTimer">00:00:00</div><div class="hint">Tocca per mettere in pausa${kmBit}</div>`;
     } else {
       const mins = workedMinutes(day);
-      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Correggi gli orari qui sotto se serve${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
+      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Tocca per un nuovo turno · orari correggibili qui sotto${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
     }
     cap.appendChild(lamp); cap.appendChild(info);
     if(isToday){
@@ -1774,9 +1774,15 @@
         cap.addEventListener('click', ()=> pauseShift(dayKey));
       } else if(isPaused){
         cap.addEventListener('click', ()=> resumeShift(dayKey));
+      } else {
+        // Turno già chiuso: si può iniziarne uno nuovo, ma serve conferma esplicita, così un tocco
+        // accidentale non azzera gli orari già registrati (che restano comunque correggibili a mano).
+        cap.addEventListener('click', async ()=>{
+          const ok = await askConfirm('Iniziare un nuovo turno?', 'Il turno di oggi risulta già terminato: proseguendo, orari e pausa registrati verranno azzerati e sostituiti da quelli del nuovo turno.', 'Inizia');
+          if(!ok) return;
+          startShift(dayKey);
+        });
       }
-      // Turno già chiuso (shiftStart e shiftEnd entrambi impostati): la capsula resta bloccata,
-      // niente riparte da zero per un tocco accidentale. Per correggere si usano gli orari qui sotto.
     }
     const chev = document.createElement('button'); chev.className='chev'+(shiftDetailsExpanded?' open':''); chev.textContent='⌄'; chev.setAttribute('aria-label','Orari e km');
     chev.addEventListener('click', (e)=>{ e.stopPropagation(); shiftDetailsExpanded = !shiftDetailsExpanded; renderMain(); });
