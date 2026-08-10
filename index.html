@@ -1764,17 +1764,19 @@
       info.innerHTML = `<div class="status">In servizio</div><div class="timer" id="liveTimer">00:00:00</div><div class="hint">Tocca per mettere in pausa${kmBit}</div>`;
     } else {
       const mins = workedMinutes(day);
-      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Tocca per iniziare un nuovo turno${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
+      info.innerHTML = `<div class="status">Turno terminato</div><div class="timer">${fmtDuration(mins)}</div><div class="hint">Correggi gli orari qui sotto se serve${day.pausedMinutes?' · pausa totale '+fmtDuration(day.pausedMinutes):''}${kmBit}</div>`;
     }
     cap.appendChild(lamp); cap.appendChild(info);
     if(isToday){
-      if(!day.shiftStart || (day.shiftStart && day.shiftEnd)){
+      if(!day.shiftStart){
         cap.addEventListener('click', ()=> startShift(dayKey));
       } else if(isRunning){
         cap.addEventListener('click', ()=> pauseShift(dayKey));
       } else if(isPaused){
         cap.addEventListener('click', ()=> resumeShift(dayKey));
       }
+      // Turno già chiuso (shiftStart e shiftEnd entrambi impostati): la capsula resta bloccata,
+      // niente riparte da zero per un tocco accidentale. Per correggere si usano gli orari qui sotto.
     }
     const chev = document.createElement('button'); chev.className='chev'+(shiftDetailsExpanded?' open':''); chev.textContent='⌄'; chev.setAttribute('aria-label','Orari e km');
     chev.addEventListener('click', (e)=>{ e.stopPropagation(); shiftDetailsExpanded = !shiftDetailsExpanded; renderMain(); });
