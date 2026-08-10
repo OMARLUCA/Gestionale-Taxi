@@ -1800,12 +1800,12 @@
     tf.querySelector('#shiftStartInput').addEventListener('input', (e)=>{
       const val = e.target.value;
       clearTimeout(shiftStartTO);
-      shiftStartTO = setTimeout(()=> setShiftStartManual(dayKey, val), 900);
+      shiftStartTO = setTimeout(()=> setShiftStartManual(dayKey, val), 2000);
     });
     tf.querySelector('#shiftEndInput').addEventListener('input', (e)=>{
       const val = e.target.value;
       clearTimeout(shiftEndTO);
-      shiftEndTO = setTimeout(()=> setShiftEndManual(dayKey, val), 900);
+      shiftEndTO = setTimeout(()=> setShiftEndManual(dayKey, val), 2000);
     });
     panel.appendChild(tf);
     const tfNote = document.createElement('div'); tfNote.className='subnote';
