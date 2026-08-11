@@ -2390,6 +2390,7 @@
         const descr = en ? `${en.kind==='spesa'?'spesa':'voce'} di ${fmtMoney(en.importo)} €${en.time?' delle '+en.time:''}` : 'questa voce';
         const ok = await askConfirm('Eliminare la voce?', `Stai per eliminare ${descr}. L\'operazione non è reversibile.`, 'Elimina');
         if(!ok) return;
+        if(en && en.linkedScanId) unlinkCorseFromScan(en);
         d.entries = d.entries.filter(e=>e.id!==id);
         await saveState(); renderMain();
       });
@@ -3074,6 +3075,10 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
   // In questa card i metodi possibili sono solo questi quattro.
   const SCAN_METODI = ['AppTAXI','Importo in centrale','Globix','Buoni'];
+  // Solo questi 4 metodi esistono in entrambe le sezioni: sono gli unici che si collegano tra loro.
+  const CORSE_TO_SCAN_METODO = { app:'AppTAXI', centrale:'Importo in centrale', globix:'Globix', buoni:'Buoni' };
+  const SCAN_TO_CORSE_METODO = { 'AppTAXI':'app', 'Importo in centrale':'centrale', 'Globix':'globix', 'Buoni':'buoni' };
+  function scanPrezzoNum(v){ return parseFloat(String(v).replace(',','.'))||0; }
   function mapScanMetodo(raw){
     const s = (raw||'').toLowerCase();
     if(/globix/.test(s)) return 'Globix';
@@ -3084,6 +3089,102 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const exact = SCAN_METODI.find(m=>m.toLowerCase()===s);
     if(exact) return exact;
     return 'AppTAXI'; // default: l'utente conferma o cambia con la rotella
+  }
+
+  // ---------- Collegamento bidirezionale Oggi <-> Scansioni ----------
+  // Una corsa inserita in Oggi con un metodo "scansionabile" genera in automatico una scansione
+  // gemella (etichettata "inserita da Oggi"), e viceversa. Servono per chi non ha bisogno di
+  // scansionare (es. un collega con un'altra radio, senza ID corsa) ma vuole comunque tutto tracciato.
+
+  // Crea o aggiorna la scansione collegata a una voce Corse appena salvata.
+  function syncCorseToScan(dayKey, corseEntry){
+    const scanMetodo = CORSE_TO_SCAN_METODO[corseEntry.metodo];
+    if(!scanMetodo){
+      if(corseEntry.linkedScanId) unlinkCorseFromScan(corseEntry);
+      return;
+    }
+    if(corseEntry.linkedScanId){
+      const scan = (state.scansioni||[]).find(s=>s._id===corseEntry.linkedScanId);
+      if(scan){
+        scan.data = dayKey; scan.ora = corseEntry.time||scan.ora;
+        scan.prezzo = corseEntry.importo.toFixed(2).replace('.',',');
+        scan.metodo = scanMetodo;
+        return;
+      }
+    }
+    const scan = {
+      _id: 'scan-'+uid(), id:'', data: dayKey, ora: corseEntry.time||'',
+      da:'', a:'', prezzo: corseEntry.importo.toFixed(2).replace('.',','), metodo: scanMetodo,
+      origine:'oggi', linkedEntryId: corseEntry.id, linkedDayKey: dayKey
+    };
+    if(!state.scansioni) state.scansioni = [];
+    state.scansioni.push(scan);
+    corseEntry.linkedScanId = scan._id;
+  }
+  // Rimuove il collegamento quando una voce Corse cambia metodo (non più scansionabile) o viene eliminata.
+  // Se la scansione era solo un riflesso automatico (mai confermata da una foto) la elimino; se invece
+  // è stata confermata da una scansione vera, la lascio ma la scollego.
+  function unlinkCorseFromScan(corseEntry){
+    const scan = (state.scansioni||[]).find(s=>s._id===corseEntry.linkedScanId);
+    if(scan){
+      if(scan.origine==='oggi') state.scansioni = state.scansioni.filter(s=>s._id!==scan._id);
+      else { scan.linkedEntryId = null; scan.linkedDayKey = null; }
+    }
+    corseEntry.linkedScanId = null;
+  }
+  // Crea o aggiorna la voce Corse collegata a una scansione (vera, da foto) appena salvata.
+  function syncScanToCorse(scanEntry){
+    const corseMetodo = SCAN_TO_CORSE_METODO[scanEntry.metodo];
+    if(!corseMetodo) return;
+    const prezzoNum = scanPrezzoNum(scanEntry.prezzo);
+    if(!prezzoNum || prezzoNum<=0) return;
+    if(scanEntry.linkedEntryId && scanEntry.linkedDayKey){
+      const day = state.days[scanEntry.linkedDayKey];
+      const corseEntry = day && day.entries.find(e=>e.id===scanEntry.linkedEntryId);
+      if(corseEntry){
+        if(scanEntry.data && scanEntry.data!==scanEntry.linkedDayKey){
+          day.entries = day.entries.filter(e=>e.id!==corseEntry.id);
+          corseEntry.time = scanEntry.ora || corseEntry.time;
+          corseEntry.importo = prezzoNum;
+          corseEntry.metodo = corseMetodo;
+          const newDay = ensureDay(scanEntry.data);
+          newDay.entries.push(corseEntry);
+          scanEntry.linkedDayKey = scanEntry.data;
+        } else {
+          corseEntry.time = scanEntry.ora || corseEntry.time;
+          corseEntry.importo = prezzoNum;
+          corseEntry.metodo = corseMetodo;
+        }
+        return;
+      }
+    }
+    if(!scanEntry.data) return;
+    const day = ensureDay(scanEntry.data);
+    const corseEntry = {
+      id: uid(), kind:'entrata', tipo:'radio', sottocategoria:null,
+      metodo: corseMetodo, importo: prezzoNum, time: scanEntry.ora || nowTimeStr(), nota:'',
+      linkedScanId: scanEntry._id
+    };
+    day.entries.push(corseEntry);
+    scanEntry.linkedEntryId = corseEntry.id;
+    scanEntry.linkedDayKey = scanEntry.data;
+  }
+  // Elimina la voce Corse collegata a una scansione che viene cancellata.
+  function removeCorseLinkedToScan(scanEntry){
+    if(!scanEntry.linkedEntryId || !scanEntry.linkedDayKey) return;
+    const day = state.days[scanEntry.linkedDayKey];
+    if(day) day.entries = day.entries.filter(e=>e.id!==scanEntry.linkedEntryId);
+  }
+  // Cerca una corsa già inserita a mano da Oggi (non ancora confermata da una foto) che potrebbe
+  // essere la stessa di questa nuova scansione: stesso giorno, stesso metodo, stesso importo.
+  function trovaCorsaOggiCandidata(scanEntry){
+    if(!scanEntry.data) return null;
+    const prezzoNum = scanPrezzoNum(scanEntry.prezzo);
+    return (state.scansioni||[]).find(s=>
+      s.origine==='oggi' && s.linkedEntryId &&
+      s.data===scanEntry.data && s.metodo===scanEntry.metodo &&
+      Math.abs(scanPrezzoNum(s.prezzo) - prezzoNum) < 0.01
+    ) || null;
   }
 
   let scanEditingId = null;
@@ -3649,7 +3750,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(!dates.length) return null;
     return { min: dates[0], max: dates[dates.length-1] };
   }
-  function fmtDataIt(iso){ return `${iso.slice(8,10)}/${iso.slice(5,7)}/${iso.slice(0,4)}`; }
   // Titolo usato sia nel PDF sia (in versione "sicura" per i file) come nome del file condiviso.
   function scanPdfTitolo(){
     const p = scanPeriodo();
@@ -3873,7 +3973,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           });
           const info = document.createElement('div');
           info.style.cssText='flex:1; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px;';
-          info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}</span><span style="font-weight:700;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+          const origBadge = e.origine==='oggi' ? ' <span style="color:var(--ink-faint); font-size:11px;">📝 da Oggi</span>' : '';
+          info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge}</span><span style="font-weight:700;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
           info.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
           row.appendChild(check);
           row.appendChild(info);
@@ -3916,7 +4017,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
               row.style.cssText='display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid var(--border);';
               const info = document.createElement('div');
               info.style.cssText='flex:1; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px; font-size:13.5px;';
-              info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}</span><span style="font-weight:600;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+              const origBadge2 = e.origine==='oggi' ? ' <span style="color:var(--ink-faint); font-size:10.5px;">📝 da Oggi</span>' : '';
+              info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge2}</span><span style="font-weight:600;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
               info.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
               const undo = document.createElement('button');
               undo.textContent='↩️'; undo.title='Rimuovi dal pagamento';
@@ -3964,7 +4066,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           const pag = pagamentoOf(e);
           const row = document.createElement('div'); row.className='kv-row'; row.style.cursor='pointer';
           const badge = arch ? `<div style="font-size:11px; color:var(--ink-faint); margin-top:2px;">✓ ${pag?`Pagamento del ${fmtDataIt(pag.data)}`:'Pagata'}</div>` : '';
-          row.innerHTML = `<span class="k">${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${badge}</span><span class="v" style="${arch?'color:var(--ink-faint);':''}">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
+          const origBadge3 = e.origine==='oggi' ? ' <span style="color:var(--ink-faint); font-size:11px;">📝 da Oggi</span>' : '';
+          row.innerHTML = `<span class="k">${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge3}${badge}</span><span class="v" style="${arch?'color:var(--ink-faint);':''}">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
           row.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
           listCard.appendChild(row);
         });
@@ -4011,14 +4114,43 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       prezzo: document.getElementById('scanPrezzoInput').value,
       metodo: document.getElementById('scanMetodoInput').value.trim()
     };
-    // Preservo lo stato di archiviazione/pagamento se la corsa esisteva già.
+    // Preservo lo stato di archiviazione/pagamento e i collegamenti se la corsa esisteva già.
     if(scanEditingId){
       const prev = state.scansioni.find(s=>s._id===scanEditingId);
-      if(prev){ entry.pagato = prev.pagato; entry.pagamentoId = prev.pagamentoId; }
+      if(prev){
+        entry.pagato = prev.pagato; entry.pagamentoId = prev.pagamentoId;
+        entry.origine = prev.origine; entry.linkedEntryId = prev.linkedEntryId; entry.linkedDayKey = prev.linkedDayKey;
+      }
     }
     if(!entry.prezzo){ showToast('Inserisci almeno il prezzo'); return; }
+
+    if(!scanEditingId){
+      // Nuova scansione (da foto): potrebbe corrispondere a una corsa già inserita a mano in Oggi.
+      const candidato = trovaCorsaOggiCandidata(entry);
+      if(candidato){
+        const prezzoTxt = fmtMoney(scanPrezzoNum(entry.prezzo));
+        const ok = await askConfirm(
+          'Corsa già inserita?',
+          `Il ${fmtDataIt(entry.data)} risulta già una corsa da ${prezzoTxt} € con lo stesso metodo, inserita a mano in Oggi. Colleghiamo questa scansione a quella corsa invece di crearne una nuova?`,
+          'Collega'
+        );
+        if(ok){
+          candidato.id = entry.id; candidato.da = entry.da; candidato.a = entry.a;
+          if(entry.ora) candidato.ora = entry.ora;
+          candidato.origine = 'foto';
+          await saveState();
+          document.getElementById('overlayScan').classList.remove('show');
+          showToast('Scansione collegata alla corsa già inserita');
+          renderMain();
+          return;
+        }
+      }
+    }
+
     const idx = state.scansioni.findIndex(s=>s._id===entry._id);
-    if(idx>=0) state.scansioni[idx] = entry; else state.scansioni.push(entry);
+    if(idx>=0) state.scansioni[idx] = entry; else { entry.origine = entry.origine || 'foto'; state.scansioni.push(entry); }
+    // Collego/aggiorno la voce gemella in Oggi in base al metodo di pagamento.
+    syncScanToCorse(entry);
     await saveState();
     document.getElementById('overlayScan').classList.remove('show');
     showToast('Corsa salvata');
@@ -4027,6 +4159,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   document.getElementById('deleteScanBtn').addEventListener('click', async ()=>{
     const ok = await askConfirm('Elimina corsa', 'Vuoi eliminare questa corsa scansionata?', 'Elimina');
     if(!ok) return;
+    const scan = state.scansioni.find(s=>s._id===scanEditingId);
+    if(scan) removeCorseLinkedToScan(scan);
     state.scansioni = state.scansioni.filter(s=>s._id!==scanEditingId);
     await saveState();
     document.getElementById('overlayScan').classList.remove('show');
@@ -5267,20 +5401,31 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     }
     const oldDayKey = dateKey(viewDate);
     const dateChanged = !!editingEntryId && oldDayKey !== targetDateStr;
+    let prevLinkedScanId = null;
+    let savedEntryRef = null;
     if(editingEntryId){
+      const sourceDay = dateChanged ? ensureDay(oldDayKey) : d;
+      const prevEntry = sourceDay.entries.find(e=>e.id===editingEntryId);
+      if(prevEntry) prevLinkedScanId = prevEntry.linkedScanId || null;
       if(!dateChanged){
         const idx = d.entries.findIndex(e=>e.id===editingEntryId);
-        if(idx>=0) d.entries[idx] = Object.assign({id: editingEntryId}, payload);
+        if(idx>=0){
+          d.entries[idx] = Object.assign({id: editingEntryId, linkedScanId: prevLinkedScanId}, payload);
+          savedEntryRef = d.entries[idx];
+        }
       } else {
-        // Data cambiata rispetto al giorno in cui si trovava: sposto la voce sul giorno giusto.
         const oldDay = ensureDay(oldDayKey);
         const idx = oldDay.entries.findIndex(e=>e.id===editingEntryId);
         if(idx>=0) oldDay.entries.splice(idx,1);
-        d.entries.push(Object.assign({id: editingEntryId}, payload));
+        d.entries.push(Object.assign({id: editingEntryId, linkedScanId: prevLinkedScanId}, payload));
+        savedEntryRef = d.entries[d.entries.length-1];
       }
     } else {
       d.entries.push(Object.assign({id: uid()}, payload));
+      savedEntryRef = d.entries[d.entries.length-1];
     }
+    // Collego/aggiorno/scollego la scansione gemella in base al metodo di pagamento.
+    if(savedEntryRef) syncCorseToScan(targetDateStr, savedEntryRef);
     // Se ho appena creato una ricorrenza che parte da un mese passato, recupero subito
     // i mesi già trascorsi fino ad oggi, senza aspettare il prossimo avvio dell'app.
     generaSpeseRicorrenti();
