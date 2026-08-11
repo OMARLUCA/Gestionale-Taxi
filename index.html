@@ -1725,9 +1725,12 @@
   let shiftDetailsExpanded = false;
   function kmFineGiornoPrecedente(dayKey){
     const d = new Date(dayKey+'T00:00:00');
-    d.setDate(d.getDate()-1);
-    const prev = state.days[dateKey(d)];
-    return (prev && typeof prev.kmEnd==='number') ? prev.kmEnd : null;
+    for(let i=0; i<366; i++){
+      d.setDate(d.getDate()-1);
+      const prev = state.days[dateKey(d)];
+      if(prev && typeof prev.kmEnd==='number') return prev.kmEnd;
+    }
+    return null;
   }
   function renderShiftCapsule(container, dayKey, day, isToday){
     // Km inizio di default = km fine del giorno precedente, se non ancora impostato per oggi.
