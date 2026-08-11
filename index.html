@@ -1769,20 +1769,25 @@
     cap.appendChild(lamp); cap.appendChild(info);
     if(isToday){
       if(!day.shiftStart){
-        cap.addEventListener('click', ()=> startShift(dayKey));
+        cap.addEventListener('click', ()=>{ showToast('▶︎ Avvio turno…'); startShift(dayKey); });
       } else if(isRunning){
-        cap.addEventListener('click', ()=> pauseShift(dayKey));
+        cap.addEventListener('click', ()=>{ showToast('⏸ Metto in pausa…'); pauseShift(dayKey); });
       } else if(isPaused){
-        cap.addEventListener('click', ()=> resumeShift(dayKey));
+        cap.addEventListener('click', ()=>{ showToast('▶︎ Riprendo…'); resumeShift(dayKey); });
       } else {
         // Turno già chiuso: si può iniziarne uno nuovo, ma serve conferma esplicita, così un tocco
         // accidentale non azzera gli orari già registrati (che restano comunque correggibili a mano).
         cap.addEventListener('click', async ()=>{
+          showToast('Turno già chiuso: chiedo conferma…');
           const ok = await askConfirm('Iniziare un nuovo turno?', 'Il turno di oggi risulta già terminato: proseguendo, orari e pausa registrati verranno azzerati e sostituiti da quelli del nuovo turno.', 'Inizia');
           if(!ok) return;
           startShift(dayKey);
         });
       }
+    } else {
+      // Diagnostico: se il giorno mostrato non risulta "oggi" per l'app, il tocco non farebbe nulla
+      // in silenzio. Meglio dirlo chiaramente, così capiamo se è questo il problema.
+      cap.addEventListener('click', ()=> showToast('Questo non è il giorno di oggi per l\'app: vai su "Oggi" per gestire il turno.'));
     }
     const chev = document.createElement('button'); chev.className='chev'+(shiftDetailsExpanded?' open':''); chev.textContent='⌄'; chev.setAttribute('aria-label','Orari e km');
     chev.addEventListener('click', (e)=>{ e.stopPropagation(); shiftDetailsExpanded = !shiftDetailsExpanded; renderMain(); });
@@ -6574,5 +6579,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     });
   }
 </script>
+<!-- build: 2026-08-11 07:05 -->
 </body>
 </html>
