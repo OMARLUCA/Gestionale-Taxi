@@ -94,6 +94,7 @@
     background:var(--amber-soft); color:var(--amber-ink); border:1px solid var(--amber-line);
     padding:3px 8px; border-radius:100px; cursor:pointer;
   }
+  #entryDateInput.not-today{background:var(--amber-soft); border-color:var(--amber-line); color:var(--amber-ink); font-weight:700;}
 
   .shift-wrap{padding:18px;}
   .alert-banner{display:flex; align-items:flex-start; gap:10px; margin:18px 18px 0; padding:12px 12px; border-radius:12px; cursor:pointer;}
@@ -751,6 +752,7 @@
       <div class="chip" data-metodo="satispay">Satispay</div>
       <div class="chip" data-metodo="bonifico">Bonifico</div>
     </div>
+    <div class="form-row"><label>Data</label><input type="date" id="entryDateInput"></div>
     <div class="form-row"><label>Ora</label><input type="time" id="timeInput"></div>
     <div class="form-row"><label>Nota (opzionale)</label><textarea id="noteInput" rows="1" placeholder="es. cliente aeroporto..."></textarea></div>
     </div>
@@ -5094,6 +5096,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   let editingEntryId = null;
   let formLinkedRicorrenzaId = null;
 
+  function updateEntryDateHighlight(){
+    const inp = document.getElementById('entryDateInput');
+    const todayKey = dateKey(new Date());
+    inp.classList.toggle('not-today', inp.value !== todayKey);
+  }
+  document.getElementById('entryDateInput').addEventListener('input', updateEntryDateHighlight);
+
   function openEntrySheet(existingEntry, defaultKind){
     editingEntryId = existingEntry ? existingEntry.id : null;
     document.querySelector('#overlay .sheet-head h3').textContent = editingEntryId ? 'Modifica voce' : 'Aggiungi voce';
@@ -5107,12 +5116,15 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       document.getElementById('amtInput').value = existingEntry.importo.toFixed(2).replace('.', ',');
       document.getElementById('noteInput').value = existingEntry.nota || '';
       document.getElementById('timeInput').value = existingEntry.time || nowTimeStr();
+      document.getElementById('entryDateInput').value = dateKey(viewDate);
     } else {
       formKind = defaultKind || 'entrata'; formTipo = 'radio'; formMetodo = formKind==='spesa' ? 'contanti' : 'carta'; formAltroCat = 'carburante';
       document.getElementById('amtInput').value='';
       document.getElementById('noteInput').value='';
       document.getElementById('timeInput').value = isSameDay(viewDate,new Date()) ? nowTimeStr() : '12:00';
+      document.getElementById('entryDateInput').value = dateKey(viewDate);
     }
+    updateEntryDateHighlight();
     document.getElementById('altroCatSelect').value = formAltroCat;
     document.querySelectorAll('#kindChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.kind===formKind));
     document.querySelectorAll('#tipoChips .chip').forEach(c=>c.classList.toggle('active', c.dataset.tipo===formTipo));
@@ -5226,8 +5238,10 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const amtRaw = document.getElementById('amtInput').value;
     const amt = parseFloat((amtRaw||'').toString().replace(',','.'));
     if(isNaN(amt) || amt<=0){ showToast('Inserisci un importo valido'); return; }
-    const dayKey2 = dateKey(viewDate);
-    const d = ensureDay(dayKey2);
+    const targetDateStr = document.getElementById('entryDateInput').value || dateKey(viewDate);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)){ showToast('Data non valida'); return; }
+    const targetDate = new Date(targetDateStr+'T00:00:00');
+    const d = ensureDay(targetDateStr);
     const payload = {
       kind: formKind,
       tipo: formKind==='entrata' ? formTipo : 'spesa',
@@ -5241,8 +5255,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         payload.ricorrenzaId = formLinkedRicorrenzaId;
       } else if(document.getElementById('ricorrenteCheck').checked){
         const rid = 'ric-'+Date.now();
-        const meseInizio = monthKey(viewDate);
-        const giorno = viewDate.getDate();
+        const meseInizio = monthKey(targetDate);
+        const giorno = targetDate.getDate();
         if(!state.speseRicorrenti) state.speseRicorrenti = [];
         state.speseRicorrenti.push({
           id: rid, sottocategoria: formAltroCat, metodo: formMetodo, importo: amt,
@@ -5251,9 +5265,19 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         payload.ricorrenzaId = rid;
       }
     }
+    const oldDayKey = dateKey(viewDate);
+    const dateChanged = !!editingEntryId && oldDayKey !== targetDateStr;
     if(editingEntryId){
-      const idx = d.entries.findIndex(e=>e.id===editingEntryId);
-      if(idx>=0) d.entries[idx] = Object.assign({id: editingEntryId}, payload);
+      if(!dateChanged){
+        const idx = d.entries.findIndex(e=>e.id===editingEntryId);
+        if(idx>=0) d.entries[idx] = Object.assign({id: editingEntryId}, payload);
+      } else {
+        // Data cambiata rispetto al giorno in cui si trovava: sposto la voce sul giorno giusto.
+        const oldDay = ensureDay(oldDayKey);
+        const idx = oldDay.entries.findIndex(e=>e.id===editingEntryId);
+        if(idx>=0) oldDay.entries.splice(idx,1);
+        d.entries.push(Object.assign({id: editingEntryId}, payload));
+      }
     } else {
       d.entries.push(Object.assign({id: uid()}, payload));
     }
@@ -5263,8 +5287,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const wasEditing = !!editingEntryId;
     const nuovaRicorrenza = !formLinkedRicorrenzaId && !!payload.ricorrenzaId;
     await saveState(); closeEntrySheet();
+    if(dateChanged) viewDate = targetDate; // mi sposto sul giorno di destinazione per vedere subito la voce spostata
     if(activeTab!=='oggi') document.querySelector('.tabs button[data-tab="oggi"]').click(); else renderMain();
-    showToast(nuovaRicorrenza ? 'Voce salvata: ripetuta ogni mese da ora in poi' : (wasEditing ? 'Voce aggiornata' : 'Voce salvata'));
+    showToast(nuovaRicorrenza ? 'Voce salvata: ripetuta ogni mese da ora in poi' : (dateChanged ? `Voce spostata al ${fmtDateLabel(targetDate)}` : (wasEditing ? 'Voce aggiornata' : 'Voce salvata')));
   });
 
   // ---------- Deadline sheet ----------
