@@ -2988,7 +2988,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
   const MESI_OCR = { gen:1, feb:2, mar:3, apr:4, mag:5, giu:6, lug:7, ago:8, set:9, ott:10, nov:11, dic:12 };
 
-  function parseCorsaOcrText(text){
+  function parseCorsaOcrText(text, ocrLines){
     const out = { id:'', data:'', ora:'', da:'', a:'', prezzo:'', metodo:'' };
     if(!text) return out;
 
@@ -3070,6 +3070,17 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     // ---- Indirizzi: prima le etichette esplicite, poi il riconoscimento della via ----
     const stripLabel = (s)=> s.replace(/^(da|a|partenza|destinazione|origine|arrivo|prelievo|pick[\s-]?up|drop[\s-]?off)\s*[:\-]?\s*/i,'').trim();
     const viaRe = /((?:via|v\.le|viale|corso|c\.so|piazza|p\.zza|piazzale|largo|lungo\w+|strada|str\.|vicolo|salita|borgo|circonvallazione|stazione|aeroporto|porto|ospedale|hotel|albergo)\s+[A-Za-zÀ-ù'’.\- ]{2,40}(?:,?\s*\d{1,4}[A-Za-z]?)?)/i;
+    // Nomi di comune/città seguiti dalla sigla provincia (es. "Peschiera Borromeo, MI"): non hanno
+    // un prefisso di via, ma su queste ricevute sono un formato di indirizzo altrettanto comune
+    // (spesso la destinazione, quando è un comune diverso da Milano).
+    const comuneRe = /([A-ZÀ-Ù][a-zà-ù'’\-]+(?:\s+[A-ZÀ-Ù][a-zà-ù'’\-]+){0,3}\s*,\s*[A-Z]{2})\b/;
+    function matchIndirizzo(t){
+      const mv = (t||'').match(viaRe);
+      if(mv) return mv[1].trim().replace(/\s{2,}/g,' ');
+      const mc = (t||'').match(comuneRe);
+      if(mc) return mc[1].trim().replace(/\s{2,}/g,' ');
+      return null;
+    }
 
     let da = '', a = '';
     for(const l of lines){
@@ -3077,8 +3088,22 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       else if(!a && /^(a|destinazione|arrivo|drop[\s-]?off)\b/i.test(l)) a = stripLabel(l);
     }
     if(!da || !a){
-      const addrs = [];
-      lines.forEach(l=>{ const mm2 = l.match(viaRe); if(mm2) addrs.push(mm2[1].trim().replace(/\s{2,}/g,' ')); });
+      // Se ho le righe con posizione (dall'OCR strutturato), ordino gli indirizzi per posizione
+      // verticale REALE nella foto: più affidabile dell'ordine del testo, che può risultare
+      // mescolato quando la foto ha elementi sovrapposti (dita, sfondo, altri pannelli).
+      let addrs = [];
+      if(ocrLines && ocrLines.length){
+        const found = [];
+        ocrLines.forEach(ln=>{
+          const str = matchIndirizzo(ln.text);
+          if(str) found.push({ str, y: (ln.bbox && typeof ln.bbox.y0==='number') ? ln.bbox.y0 : 0 });
+        });
+        found.sort((x,y)=> x.y - y.y);
+        addrs = found.map(f=>f.str);
+      }
+      if(!addrs.length){
+        lines.forEach(l=>{ const str = matchIndirizzo(l); if(str) addrs.push(str); });
+      }
       if(!da && addrs[0]) da = addrs[0];
       if(!a && addrs[1]) a = addrs[1];
     }
@@ -3603,14 +3628,14 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     try{
       await worker.setParameters({ tessedit_pageseg_mode: '6' });
       let res = await withTimeout(worker.recognize(safePre('bw')), 180000, 'lettura');
-      let best = parseCorsaOcrText(res.data.text || '');
+      let best = parseCorsaOcrText(res.data.text || '', res.data.lines);
       let bestText = res.data.text || '';
 
       if(ocrScore(best) < 6){
         ocrLastPct = -1;
         await worker.setParameters({ tessedit_pageseg_mode: '11' });
         res = await withTimeout(worker.recognize(safePre('gray')), 180000, 'lettura');
-        const alt = parseCorsaOcrText(res.data.text || '');
+        const alt = parseCorsaOcrText(res.data.text || '', res.data.lines);
         if(ocrScore(alt) > ocrScore(best)){ best = alt; bestText = res.data.text || ''; }
       }
 
@@ -5014,6 +5039,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   // Gestisce: "5 - 7 maggio", "11 giugno", "29 - 30 - 31 agosto", "29 maggio - 2 giugno".
   function parseDataRange(str, annoDefault){
     str = (str||'').replace(/\s+/g,' ').trim().toLowerCase();
+    // Fiera Milano non usa sempre lo stesso trattino tra due numeri (es. "7 – 9 luglio" con un trattino
+    // lungo invece di quello normale): li normalizzo tutti allo stesso carattere prima di continuare.
+    str = str.replace(/[\u2010-\u2015\u2212]/g, '-');
     // trova tutti i mesi citati con la loro posizione
     const mesiTrovati = [];
     Object.keys(MESI_IT).forEach(m=>{ let i=str.indexOf(m); while(i>=0){ mesiTrovati.push({mese:MESI_IT[m], pos:i}); i=str.indexOf(m,i+1); } });
