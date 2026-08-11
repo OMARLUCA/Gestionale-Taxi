@@ -1152,6 +1152,29 @@
 
   // Scarica la riga remota e la adotta SOLO se è più recente di quella locale.
   function hasData(s){ return !!(s && s.days && Object.keys(s.days).length > 0); }
+  // Unisce (senza mai perdere nulla) le collezioni che crescono nel tempo: se il cloud "vince" per data
+  // ma è in realtà una copia più vecchia/incompleta (es. da un altro accesso), questo evita che eventi,
+  // pagamenti, corse scansionate, ricorrenze, corrispettivi generati o invii spariscano silenziosamente.
+  function mergeCollezioniAdditive(localSnapshot, target){
+    // Eventi: oggetto {data: [eventi]}, dedup per nome dentro ogni giorno.
+    const localEventi = localSnapshot.eventi || {};
+    if(!target.eventi) target.eventi = {};
+    Object.keys(localEventi).forEach(k=>{
+      if(!target.eventi[k]) target.eventi[k] = [];
+      const nomi = new Set(target.eventi[k].map(e=>(e.nome||'').toLowerCase()));
+      (localEventi[k]||[]).forEach(ev=>{ if(ev && !nomi.has((ev.nome||'').toLowerCase())){ target.eventi[k].push(ev); nomi.add((ev.nome||'').toLowerCase()); } });
+    });
+    // Collezioni ad array con id: unisco per id, senza duplicare.
+    [
+      ['pagamenti','id'], ['scansioni','_id'], ['deadlines','id'],
+      ['reports','id'], ['speseRicorrenti','id'], ['corrispettiviGenerati','id'], ['invii','id']
+    ].forEach(([key, idField])=>{
+      const localArr = localSnapshot[key] || [];
+      if(!target[key]) target[key] = [];
+      const ids = new Set(target[key].map(x=>x && x[idField]));
+      localArr.forEach(x=>{ if(x && !ids.has(x[idField])){ target[key].push(x); ids.add(x[idField]); } });
+    });
+  }
   async function cloudPull(){
     if(!cloudOn() || !currentUser) return;
     try{
@@ -1169,7 +1192,9 @@
       // REGOLA DI SICUREZZA: non sovrascrivere MAI dati locali con un cloud vuoto.
       // Adotto il cloud solo se ha dati veri E (il locale è vuoto OPPURE il cloud è più recente).
       if(remoteHas && (!localHas || remoteAt > localAt)){
+        const localSnapshot = JSON.parse(JSON.stringify(state));
         applyLoadedState(remote);
+        mergeCollezioniAdditive(localSnapshot, state);
         if(generaSpeseRicorrenti()) state.updatedAt = new Date().toISOString();
         await window.storage.set('taxi31-log', JSON.stringify(state), false);
         if(typeof renderMain==='function') renderMain();
