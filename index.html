@@ -942,6 +942,13 @@
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
     </div>
 
+    <div class="settings-section" id="pulizieSection">
+      <h4>Manutenzione dati</h4>
+      <div class="subnote" style="margin-bottom:10px;">Un vecchio bug (ora corretto) poteva scrivere un "km inizio" su giorni mai lavorati, senza il relativo "km fine". Non incide sui calcoli, ma puoi ripulirli qui.</div>
+      <div id="kmOrfaniStatus" class="subnote" style="margin-bottom:8px;"></div>
+      <button class="save-btn" id="pulisciKmOrfaniBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">🧹 Ripulisci km senza turno</button>
+    </div>
+
     <div class="settings-section" id="backupSection">
       <h4>Backup dati</h4>
       <div class="subnote" style="margin-bottom:10px;">Esporta tutti i dati del gestionale o importali da un file. Il JSON è il backup completo; il CSV contiene le corse e le spese.</div>
@@ -5720,8 +5727,52 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       wrap.appendChild(row);
     });
   }
+  // Trova i giorni con la firma esatta della contaminazione del vecchio bug: "km inizio" presente,
+  // "km fine" assente, e NESSUN'ALTRA attività reale (niente turno, niente corse, niente spese).
+  // Esclude sempre oggi, per non toccare mai un turno eventualmente in corso.
+  function trovaKmOrfani(){
+    const todayKey = dateKey(new Date());
+    const orfani = [];
+    Object.keys(state.days).forEach(k=>{
+      if(k===todayKey) return;
+      const d = state.days[k];
+      if(typeof d.kmStart==='number' && typeof d.kmEnd!=='number' &&
+         !d.shiftStart && !d.shiftEnd && (!d.entries || d.entries.length===0)){
+        orfani.push(k);
+      }
+    });
+    return orfani.sort();
+  }
+  function renderKmOrfaniStatus(){
+    const box = document.getElementById('kmOrfaniStatus');
+    const btn = document.getElementById('pulisciKmOrfaniBtn');
+    const orfani = trovaKmOrfani();
+    if(orfani.length===0){
+      box.textContent = 'Nessun km orfano trovato: niente da ripulire.';
+      btn.disabled = true; btn.style.opacity = '0.5';
+    } else {
+      box.textContent = `${orfani.length} giorni con km inizio ma nessuna attività reale (dal ${orfani[0].split('-').reverse().join('/')} al ${orfani[orfani.length-1].split('-').reverse().join('/')}).`;
+      btn.disabled = false; btn.style.opacity = '1';
+    }
+  }
+  document.getElementById('pulisciKmOrfaniBtn').addEventListener('click', async ()=>{
+    const orfani = trovaKmOrfani();
+    if(orfani.length===0) return;
+    const ok = await askConfirm(
+      'Ripulire i km orfani?',
+      `Verrà svuotato solo il campo "km inizio" su ${orfani.length} giorni senza turno, corse o spese registrate. Non tocca nessun altro dato.`,
+      'Ripulisci'
+    );
+    if(!ok) return;
+    orfani.forEach(k=>{ state.days[k].kmStart = null; });
+    await saveState();
+    renderKmOrfaniStatus();
+    showToast(`Ripuliti ${orfani.length} giorni`);
+  });
+
   function openSettingsSheet(){
     buildMethodToggles();
+    renderKmOrfaniStatus();
     document.getElementById('setCoeff').value = state.settings.coeffRedditivita;
     document.getElementById('setSostitutiva').value = state.settings.aliquotaSostitutiva;
     document.getElementById('setVantaggio5').checked = state.settings.regimeVantaggio5;
