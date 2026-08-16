@@ -1038,6 +1038,17 @@
   </div>
 </div>
 
+<div class="overlay" id="overlayKmTurno">
+  <div class="sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-head"><h3 id="kmTurnoTitle">Km turno</h3><button id="closeSheetKmTurno">✕</button></div>
+    <div class="subnote" id="kmTurnoNote" style="margin-bottom:14px;"></div>
+    <div class="form-row"><label id="kmTurnoLabel">Km</label><input type="number" inputmode="numeric" id="kmTurnoInput" placeholder="es. 84500"></div>
+    <button class="save-btn" id="kmTurnoConfermaBtn" style="margin-top:8px;">Conferma</button>
+    <button class="save-btn" id="kmTurnoSaltaBtn" style="margin-top:8px; background:transparent; color:var(--ink-muted); border:1px solid var(--border);">Salta per ora</button>
+  </div>
+</div>
+
 <div class="overlay" id="overlayCal">
   <div class="sheet">
     <div class="sheet-handle"></div>
@@ -1808,7 +1819,7 @@
     cap.appendChild(lamp); cap.appendChild(info);
     if(isToday){
       if(!day.shiftStart){
-        cap.addEventListener('click', ()=>{ showToast('▶︎ Avvio turno…'); startShift(dayKey); });
+        cap.addEventListener('click', ()=> openKmTurnoSheet('start', dayKey));
       } else if(isRunning){
         cap.addEventListener('click', ()=>{ showToast('⏸ Metto in pausa…'); pauseShift(dayKey); });
       } else if(isPaused){
@@ -1817,10 +1828,9 @@
         // Turno già chiuso: si può iniziarne uno nuovo, ma serve conferma esplicita, così un tocco
         // accidentale non azzera gli orari già registrati (che restano comunque correggibili a mano).
         cap.addEventListener('click', async ()=>{
-          showToast('Turno già chiuso: chiedo conferma…');
           const ok = await askConfirm('Iniziare un nuovo turno?', 'Il turno di oggi risulta già terminato: proseguendo, orari e pausa registrati verranno azzerati e sostituiti da quelli del nuovo turno.', 'Inizia');
           if(!ok) return;
-          startShift(dayKey);
+          openKmTurnoSheet('start', dayKey);
         });
       }
     } else {
@@ -1930,7 +1940,7 @@
         actions.appendChild(b1);
       }
       const b2 = document.createElement('button'); b2.className='btn-end'; b2.textContent='Termina turno';
-      b2.addEventListener('click', ()=> endShift(dayKey));
+      b2.addEventListener('click', ()=> openKmTurnoSheet('end', dayKey));
       actions.appendChild(b2);
       panel.appendChild(actions);
     }
@@ -2042,6 +2052,59 @@
     showToast('Turno terminato');
     await saveState(); renderMain();
   }
+
+  // ---------- Popup km all'inizio e alla fine del turno ----------
+  // Aiuta a non dimenticarsi di inserire i km: appena tocchi "inizia" o "termina turno",
+  // un piccolo foglio chiede di confermare (o correggere) il chilometraggio, invece di
+  // lasciarlo silenziosamente vuoto finché non te ne accorgi dopo.
+  let kmTurnoContext = null; // { mode:'start'|'end', dayKey }
+  function openKmTurnoSheet(mode, dayKey){
+    kmTurnoContext = { mode, dayKey };
+    const title = document.getElementById('kmTurnoTitle');
+    const note = document.getElementById('kmTurnoNote');
+    const label = document.getElementById('kmTurnoLabel');
+    const input = document.getElementById('kmTurnoInput');
+    if(mode==='start'){
+      const suggerito = kmFineGiornoPrecedente(dayKey);
+      title.textContent = 'Confermi i km di inizio turno?';
+      label.textContent = 'Km inizio';
+      input.value = suggerito!=null ? suggerito : '';
+      note.textContent = suggerito!=null
+        ? 'Proposto in automatico dal km fine dell\'ultimo giorno lavorato. Puoi modificarlo se serve.'
+        : 'Nessun dato dei giorni precedenti trovato: inseriscilo tu.';
+    } else {
+      const day = getDayReadonly(dayKey);
+      title.textContent = 'Km di fine turno';
+      label.textContent = 'Km fine';
+      input.value = typeof day.kmEnd==='number' ? day.kmEnd : '';
+      note.textContent = 'Inserisci il chilometraggio a fine turno.';
+    }
+    document.getElementById('overlayKmTurno').classList.add('show');
+    setTimeout(()=>{ input.focus(); input.select(); }, 250);
+  }
+  document.getElementById('closeSheetKmTurno').addEventListener('click', ()=> document.getElementById('overlayKmTurno').classList.remove('show'));
+  document.getElementById('overlayKmTurno').addEventListener('click', (e)=>{ if(e.target.id==='overlayKmTurno') document.getElementById('overlayKmTurno').classList.remove('show'); });
+  document.getElementById('kmTurnoSaltaBtn').addEventListener('click', async ()=>{
+    const ctx = kmTurnoContext;
+    document.getElementById('overlayKmTurno').classList.remove('show');
+    if(!ctx) return;
+    if(ctx.mode==='start') await startShift(ctx.dayKey);
+    else await endShift(ctx.dayKey);
+  });
+  document.getElementById('kmTurnoConfermaBtn').addEventListener('click', async ()=>{
+    const ctx = kmTurnoContext;
+    const val = parseFloat(document.getElementById('kmTurnoInput').value);
+    document.getElementById('overlayKmTurno').classList.remove('show');
+    if(!ctx) return;
+    const d = ensureDay(ctx.dayKey);
+    if(ctx.mode==='start'){
+      if(!isNaN(val)) d.kmStart = val;
+      await startShift(ctx.dayKey);
+    } else {
+      if(!isNaN(val)) d.kmEnd = val;
+      await endShift(ctx.dayKey);
+    }
+  });
 
   async function setShiftStartManual(dayKey, val){
     if(!val) return;
