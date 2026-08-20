@@ -1012,7 +1012,7 @@
     <div class="form-row"><label>Da</label><input type="text" id="scanDaInput"></div>
     <div class="form-row"><label>A</label><input type="text" id="scanAInput"></div>
     <div class="km-grid">
-      <div class="field"><label>Prezzo (€)</label><input type="number" step="0.01" id="scanPrezzoInput"></div>
+      <div class="field"><label>Prezzo (€)</label><input type="text" inputmode="decimal" id="scanPrezzoInput" placeholder="0,00"></div>
       <div class="field"><label>Metodo</label><select id="scanMetodoInput">
         <option value="AppTAXI">AppTAXI</option>
         <option value="Importo in centrale">Importo in centrale</option>
@@ -1194,6 +1194,22 @@
       if(!target[key]) target[key] = [];
       const ids = new Set(target[key].map(x=>x && x[idField]));
       localArr.forEach(x=>{ if(x && !ids.has(x[idField])){ target[key].push(x); ids.add(x[idField]); } });
+    });
+    // Giorni (corse e spese): se il cloud "vince" ma era in realtà una copia meno aggiornata, le voci
+    // registrate solo in locale (es. una corsa appena scansionata) non devono sparire. Unisco le
+    // "entries" di ogni giorno per id, e recupero i campi turno/km solo se nel giorno vincente mancano.
+    const localDays = localSnapshot.days || {};
+    if(!target.days) target.days = {};
+    Object.keys(localDays).forEach(k=>{
+      const localDay = localDays[k];
+      if(!target.days[k]){ target.days[k] = localDay; return; }
+      const t = target.days[k];
+      if(!t.entries) t.entries = [];
+      const ids = new Set(t.entries.map(e=>e && e.id));
+      (localDay.entries||[]).forEach(e=>{ if(e && !ids.has(e.id)){ t.entries.push(e); ids.add(e.id); } });
+      ['shiftStart','shiftEnd','pauseStart','pausedMinutes','kmStart','kmEnd'].forEach(campo=>{
+        if((t[campo]===null || t[campo]===undefined) && localDay[campo]!=null) t[campo] = localDay[campo];
+      });
     });
   }
   async function cloudPull(){
@@ -3406,7 +3422,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('scanOraInput').value = parsed.ora||'';
     document.getElementById('scanDaInput').value = parsed.da||'';
     document.getElementById('scanAInput').value = parsed.a||'';
-    document.getElementById('scanPrezzoInput').value = parsed.prezzo ? parsed.prezzo.replace(',','.') : '';
+    document.getElementById('scanPrezzoInput').value = parsed.prezzo || '';
     document.getElementById('scanMetodoInput').value = mapScanMetodo(parsed.metodo);
     document.getElementById('deleteScanBtn').style.display = existingId ? 'block' : 'none';
     renderScanPagamentoBox(parsed);
@@ -4281,7 +4297,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     syncScanToCorse(entry);
     await saveState();
     document.getElementById('overlayScan').classList.remove('show');
-    showToast('Corsa salvata');
+    if(entry.linkedEntryId){
+      const oggiKey = dateKey(new Date());
+      const suGiornoDiverso = entry.linkedDayKey !== oggiKey;
+      showToast(`Corsa salvata · ✓ in Oggi${suGiornoDiverso ? ` (sul ${fmtDataIt(entry.linkedDayKey)})` : ''}`);
+    } else {
+      showToast('Corsa salvata (metodo non collegabile a Oggi)');
+    }
     renderMain();
   });
   document.getElementById('deleteScanBtn').addEventListener('click', async ()=>{
@@ -5507,6 +5529,23 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(!/^\d{4}-\d{2}-\d{2}$/.test(targetDateStr)){ showToast('Data non valida'); return; }
     const targetDate = new Date(targetDateStr+'T00:00:00');
     const d = ensureDay(targetDateStr);
+
+    // Solo per voci nuove (non in modifica): avviso se esiste già una voce identica lo stesso giorno,
+    // per non ritrovarsi doppioni senza accorgersene (es. corsa già arrivata da una scansione).
+    if(!editingEntryId){
+      const possibileDoppione = d.entries.find(e=>
+        e.kind===formKind && e.metodo===formMetodo && Math.abs(e.importo-amt)<0.01
+      );
+      if(possibileDoppione){
+        const ok = await askConfirm(
+          'Possibile doppione',
+          `Il ${fmtDataIt(targetDateStr)} risulta già una voce da ${fmtMoney(amt)} € con lo stesso metodo. Vuoi salvarla comunque?`,
+          'Salva comunque'
+        );
+        if(!ok) return;
+      }
+    }
+
     const payload = {
       kind: formKind,
       tipo: formKind==='entrata' ? formTipo : 'spesa',
