@@ -3680,6 +3680,33 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return msg;
   }
 
+  // ---------- PaddleOCR (motore più accurato, caricato da CDN al bisogno) ----------
+  // Se fallisce per qualunque motivo (rete, caricamento, timeout) si torna a Tesseract
+  // in automatico: questo motore non deve mai peggiorare l'esperienza, solo migliorarla.
+  let paddleOcrServicePromise = null;
+  async function getPaddleOcrService(){
+    if(!paddleOcrServicePromise){
+      paddleOcrServicePromise = (async ()=>{
+        const mod = await import('https://esm.sh/ppu-paddle-ocr/web');
+        const service = new mod.PaddleOcrService();
+        await service.initialize();
+        return service;
+      })().catch(e=>{ paddleOcrServicePromise = null; throw e; });
+    }
+    return paddleOcrServicePromise;
+  }
+  async function tryPaddleOcr(canvas){
+    const service = await getPaddleOcrService();
+    const blob = await new Promise((res,rej)=> canvas.toBlob(b=> b?res(b):rej(new Error('canvas vuoto')), 'image/png'));
+    const arrayBuffer = await blob.arrayBuffer();
+    const result = await service.recognize(arrayBuffer, { flatten:false });
+    const lines = (result.lines||[]).map(line=>({
+      text: line.map(it=>it.text).join(' '),
+      bbox: { y0: line.length ? Math.min(...line.map(it=>it.box.y)) : 0 }
+    }));
+    return { text: result.text||'', lines };
+  }
+
   async function runOcrOnFile(file){
     ocrLastPct = -1;
     lastOcrError = '';
@@ -3699,7 +3726,25 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       return;
     }
 
-    // 2) Motore
+    // 2) Provo prima PaddleOCR (più accurato, richiede la rete la prima volta per scaricare
+    // il modello, poi resta in cache). Se non va per qualsiasi motivo, passo a Tesseract
+    // esattamente come prima, senza che l'utente debba fare nulla di diverso.
+    try{
+      const paddleResult = await withTimeout(tryPaddleOcr(cloneCanvas(base)), 45000, 'lettura PaddleOCR');
+      const best = parseCorsaOcrText(paddleResult.text, paddleResult.lines);
+      const s = ocrScore(best);
+      if(s >= 6){
+        lastOcrText = paddleResult.text;
+        openScanReviewSheet(best, null);
+        showToast('Letto con PaddleOCR ✓ · Controlla i dati prima di salvare');
+        return;
+      }
+      console.warn('PaddleOCR: lettura troppo debole (punteggio '+s+'), provo Tesseract');
+    }catch(e){
+      console.warn('PaddleOCR non disponibile, uso Tesseract', e);
+    }
+
+    // 3) Motore di ripiego: Tesseract, il percorso già collaudato.
     let worker = null;
     try{
       worker = await getOcrWorker();
@@ -3712,7 +3757,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       return;
     }
 
-    // 3) Lettura: se la pre-elaborazione fallisce si usa comunque l'immagine originale
+    // 4) Lettura: se la pre-elaborazione fallisce si usa comunque l'immagine originale
     const safePre = (mode)=>{
       try{ return ocrPreprocess(cloneCanvas(base), mode); }
       catch(err){ console.warn('pre-elaborazione saltata', err); return base; }
@@ -3734,7 +3779,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       lastOcrText = bestText;
       openScanReviewSheet(best, null);
       const s = ocrScore(best);
-      showToast(s >= 6 ? 'Controlla i dati letti prima di salvare'
+      showToast(s >= 6 ? 'Letto con Tesseract · Controlla i dati prima di salvare'
               : (s > 0 ? 'Lettura parziale: completa i campi mancanti'
                        : 'Testo non riconosciuto: controlla la foto e inserisci a mano'));
     }catch(e){
