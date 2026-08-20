@@ -416,6 +416,7 @@
 
   .overlay#overlayConfirm{align-items:center;}
   .overlay{position:fixed; inset:0; background:rgba(30,26,10,0.45); z-index:40; display:flex; align-items:flex-end; opacity:0; pointer-events:none; transition:opacity .2s;}
+  #overlayConfirm{z-index:55;}
   .overlay.show{opacity:1; pointer-events:auto;}
   .sheet{background:var(--surface); width:100%; border-radius:20px 20px 0 0; padding:18px 18px calc(20px + var(--safe-bottom)); border-top:1px solid var(--border); transform:translateY(100%); transition:transform .25s ease; max-height:88vh; overflow-y:auto;}
   .sheet-handle{width:40px; height:5px; border-radius:3px; background:var(--border); margin:-6px auto 14px; touch-action:none;}
@@ -4044,6 +4045,41 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     replaceWithOpenLink(btn, blob, scanPdfFilename());
   }
 
+  // Aggancia lo swipe-per-eliminare (stesso gesto delle voci in Oggi) a un elenco di righe già
+  // costruite come coppie .entry-row-content/.entry-delete-reveal dentro un contenitore comune.
+  function attachSwipeToDelete(container){
+    let openRowContent = null;
+    function closeOpenRow(){ if(openRowContent){ openRowContent.style.transform = 'translateX(0)'; openRowContent = null; } }
+    container.querySelectorAll('.entry-row-content').forEach(rc=>{
+      let startX=0, startY=0, dx=0, decided=false, horizontal=false;
+      rc._suppressClick = false;
+      const REVEAL = 84;
+      rc.addEventListener('touchstart', (e)=>{
+        if(openRowContent && openRowContent!==rc) closeOpenRow();
+        startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+        dx = 0; decided=false; horizontal=false;
+        rc.style.transition='none';
+      }, {passive:true});
+      rc.addEventListener('touchmove', (e)=>{
+        const cx = e.touches[0].clientX - startX;
+        const cy = e.touches[0].clientY - startY;
+        if(!decided){ if(Math.abs(cx)>8 || Math.abs(cy)>8){ decided=true; horizontal = Math.abs(cx)>Math.abs(cy); } }
+        if(!horizontal) return;
+        dx = Math.min(0, Math.max(cx, -REVEAL-16));
+        rc.style.transform = `translateX(${dx}px)`;
+      }, {passive:true});
+      rc.addEventListener('touchend', ()=>{
+        rc.style.transition='transform .18s ease';
+        if(horizontal){
+          rc._suppressClick = true;
+          setTimeout(()=> rc._suppressClick=false, 300);
+          if(dx < -REVEAL*0.5){ rc.style.transform = `translateX(-${REVEAL}px)`; openRowContent = rc; }
+          else { rc.style.transform = 'translateX(0)'; if(openRowContent===rc) openRowContent=null; }
+        }
+      });
+    });
+  }
+
   function renderScansioni(container){
     const card = document.createElement('div'); card.className='card';
     card.innerHTML = `<h2>Scansione corse</h2>
@@ -4103,10 +4139,10 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           actionCard.querySelector('#creaPagamentoBtn').addEventListener('click', ()=> openPagamentoCreateSheet([...scanSelected]));
         }
         const listCard = document.createElement('div'); listCard.className='card';
-        listCard.innerHTML = `<h2>Da archiviare</h2><div class="subnote" style="margin-bottom:8px;">Seleziona le corse pagate insieme (es. lo stesso bonifico) e crea un pagamento.</div>`;
+        listCard.innerHTML = `<h2>Da archiviare</h2><div class="subnote" style="margin-bottom:8px;">Seleziona le corse pagate insieme (es. lo stesso bonifico) e crea un pagamento. Scorri una riga verso sinistra per eliminarla.</div>`;
         [...daArchiviare].sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
           const row = document.createElement('div');
-          row.style.cssText='display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--border);';
+          row.style.cssText='display:flex; align-items:center; gap:10px;';
           const check = document.createElement('input');
           check.type='checkbox'; check.checked = scanSelected.has(e._id);
           check.style.cssText='width:20px; height:20px; flex:none; accent-color:var(--amber-line); cursor:pointer;';
@@ -4115,16 +4151,28 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
             if(check.checked) scanSelected.add(e._id); else scanSelected.delete(e._id);
             renderMain();
           });
-          const info = document.createElement('div');
-          info.style.cssText='flex:1; display:flex; justify-content:space-between; align-items:center; cursor:pointer; gap:8px;';
+          const swipe = document.createElement('div'); swipe.className='entry-swipe'; swipe.style.flex='1';
           const origBadge = e.origine==='oggi' ? ' <span style="color:var(--ink-faint); font-size:11px;">📝 da Oggi</span>' : '';
-          info.innerHTML = `<span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge}</span><span style="font-weight:700;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
-          info.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
+          swipe.innerHTML = `<div class="entry-delete-reveal" data-id="${e._id}">Elimina</div>
+            <div class="entry-row-content" data-id="${e._id}" style="padding:9px 0; justify-content:space-between;">
+              <span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge}</span><span style="font-weight:700;">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>
+            </div>`;
           row.appendChild(check);
-          row.appendChild(info);
+          row.appendChild(swipe);
           listCard.appendChild(row);
         });
         container.appendChild(listCard);
+        attachSwipeToDelete(listCard);
+        listCard.querySelectorAll('.entry-row-content').forEach(rc=>{
+          rc.addEventListener('click', ()=>{
+            if(rc._suppressClick) return;
+            const e = daArchiviare.find(x=>x._id===rc.dataset.id);
+            if(e) openScanReviewSheet(e, e._id);
+          });
+        });
+        listCard.querySelectorAll('.entry-delete-reveal').forEach(btn=>{
+          btn.addEventListener('click', ()=> deleteScanById(btn.dataset.id, false));
+        });
       }
     } else if(scanFilter==='pagamenti'){
       if(pagamenti.length===0){
@@ -4204,18 +4252,32 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         container.appendChild(es);
       } else {
         const listCard = document.createElement('div'); listCard.className='card';
-        listCard.innerHTML = `<h2>Corse scansionate</h2>`;
+        listCard.innerHTML = `<h2>Corse scansionate</h2><div class="subnote" style="margin-bottom:8px;">Scorri una riga verso sinistra per eliminarla.</div>`;
         [...list].sort((a,b)=> (b.data||'').localeCompare(a.data||'')).forEach(e=>{
           const arch = isArchived(e);
           const pag = pagamentoOf(e);
-          const row = document.createElement('div'); row.className='kv-row'; row.style.cursor='pointer';
           const badge = arch ? `<div style="font-size:11px; color:var(--ink-faint); margin-top:2px;">✓ ${pag?`Pagamento del ${fmtDataIt(pag.data)}`:'Pagata'}</div>` : '';
           const origBadge3 = e.origine==='oggi' ? ' <span style="color:var(--ink-faint); font-size:11px;">📝 da Oggi</span>' : '';
-          row.innerHTML = `<span class="k">${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge3}${badge}</span><span class="v" style="${arch?'color:var(--ink-faint);':''}">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>`;
-          row.addEventListener('click', ()=> openScanReviewSheet(e, e._id));
-          listCard.appendChild(row);
+          const swipe = document.createElement('div'); swipe.className='entry-swipe';
+          swipe.innerHTML = `<div class="entry-delete-reveal" data-id="${e._id}">Elimina</div>
+            <div class="entry-row-content" data-id="${e._id}" style="justify-content:space-between;">
+              <span>${e.data||'—'} ${e.ora||''} · ${e.da||'?'} → ${e.a||'?'}${origBadge3}${badge}</span>
+              <span style="font-weight:600; ${arch?'color:var(--ink-faint);':''}">${fmtMoney(parseFloat(String(e.prezzo).replace(',','.'))||0)} €</span>
+            </div>`;
+          listCard.appendChild(swipe);
         });
         container.appendChild(listCard);
+        attachSwipeToDelete(listCard);
+        listCard.querySelectorAll('.entry-row-content').forEach(rc=>{
+          rc.addEventListener('click', ()=>{
+            if(rc._suppressClick) return;
+            const e = list.find(x=>x._id===rc.dataset.id);
+            if(e) openScanReviewSheet(e, e._id);
+          });
+        });
+        listCard.querySelectorAll('.entry-delete-reveal').forEach(btn=>{
+          btn.addEventListener('click', ()=> deleteScanById(btn.dataset.id, false));
+        });
       }
     }
 
@@ -4306,17 +4368,20 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     }
     renderMain();
   });
-  document.getElementById('deleteScanBtn').addEventListener('click', async ()=>{
-    const ok = await askConfirm('Elimina corsa', 'Vuoi eliminare questa corsa scansionata?', 'Elimina');
+  // Cancellazione di una corsa scansionata: riusata sia dal pulsante nella scheda sia dallo swipe.
+  async function deleteScanById(scanId, chiudiScheda){
+    const scan = state.scansioni.find(s=>s._id===scanId);
+    const descr = scan ? `la corsa da ${fmtMoney(parseFloat(String(scan.prezzo).replace(',','.'))||0)} €${scan.data?' del '+fmtDataIt(scan.data):''}` : 'questa corsa';
+    const ok = await askConfirm('Eliminare la corsa?', `Stai per eliminare ${descr}. L'operazione non è reversibile.`, 'Elimina');
     if(!ok) return;
-    const scan = state.scansioni.find(s=>s._id===scanEditingId);
     if(scan) removeCorseLinkedToScan(scan);
-    state.scansioni = state.scansioni.filter(s=>s._id!==scanEditingId);
+    state.scansioni = state.scansioni.filter(s=>s._id!==scanId);
     await saveState();
-    document.getElementById('overlayScan').classList.remove('show');
+    if(chiudiScheda) document.getElementById('overlayScan').classList.remove('show');
     showToast('Corsa eliminata');
     renderMain();
-  });
+  }
+  document.getElementById('deleteScanBtn').addEventListener('click', ()=> deleteScanById(scanEditingId, true));
 
   function renderCorrispettivi(container){
     const disc = document.createElement('div'); disc.className='disclaimer';
