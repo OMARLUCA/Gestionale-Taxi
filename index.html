@@ -5479,10 +5479,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
 
   async function importEventiFromFile(file){
     const anno = annoDaNomeFile(file.name);
-    let map = await parseEventiPdf(await file.arrayBuffer(), anno);
+    // Provo prima il lettore "turno libero": internamente si esclude da solo (nessuna corrispondenza)
+    // se il documento non contiene quella frase, quindi non tocca i normali calendari Fiera Milano.
+    // Va provato per primo perché il lettore a tabella, su un testo in prosa come questo, può
+    // produrre corrispondenze false invece di restituire semplicemente "nessun risultato".
+    let map = await parseTurnoLiberoPdf(await file.arrayBuffer(), anno);
     if(Object.keys(map).length===0){
-      // Non è il formato a tabella di Fiera Milano: provo il formato "determinazione turno libero".
-      map = await parseTurnoLiberoPdf(await file.arrayBuffer(), anno);
+      map = await parseEventiPdf(await file.arrayBuffer(), anno);
     }
     const giorni = Object.keys(map);
     if(giorni.length===0){ showToast('Nessun evento riconosciuto nel PDF'); return; }
@@ -5542,14 +5545,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         }
         let html = '';
         if(isTurnoLibero){
-          html += `<div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--green);">🟢 Turno libero oggi</div>`;
-          html += `<div style="font-weight:700; font-size:15px; color:var(--ink); margin-top:3px;">${escapeHtml(ev.nome)}</div>`;
+          html += `<div style="font-size:14px; font-weight:700; letter-spacing:0.02em; color:var(--green);">🟢 Turno libero</div>`;
         } else {
           html += `<div style="font-weight:700; font-size:15px; color:var(--ink);">${escapeHtml(ev.nome)}</div>`;
         }
         if(ev.sede) html += `<div style="font-size:13px; color:var(--ink-muted); margin-top:2px;">📍 ${escapeHtml(ev.sede)}</div>`;
         if(ev.orario) html += `<div style="font-size:13px; ${isTurnoLibero?'font-weight:600; color:var(--green);':'color:var(--ink-muted);'} margin-top:2px;">🕐 ${escapeHtml(ev.orario)}</div>`;
-        if(ev.periodo) html += `<div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">${escapeHtml(ev.periodo)}</div>`;
+        if(ev.periodo && !isTurnoLibero) html += `<div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">${escapeHtml(ev.periodo)}</div>`;
         row.innerHTML = html;
         const del = document.createElement('button');
         del.textContent='✕'; del.title='Rimuovi';
