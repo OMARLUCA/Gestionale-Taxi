@@ -5388,10 +5388,102 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return m ? parseInt(m[1],10) : annoSelezionato;
   }
 
+  // Secondo formato riconosciuto: determinazioni comunali che autorizzano un "turno libero" temporaneo
+  // (deroghe ai turni per grandi eventi). Struttura completamente diversa da quella di Fiera Milano:
+  // qui è testo in prosa, non una tabella, quindi si cercano frasi chiave invece delle colonne.
+  async function parseTurnoLiberoPdf(arrayBuffer, annoDefault){
+    const pdfjs = await loadPdfJs();
+    const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+    const lines = [];
+    for(let pi=1; pi<=pdf.numPages; pi++){
+      const page = await pdf.getPage(pi);
+      const tc = await page.getTextContent();
+      const rowsMap = {};
+      tc.items.forEach(it=>{
+        const x = it.transform[4], y = Math.round(it.transform[5]);
+        const t = (it.str||'').trim(); if(!t) return;
+        (rowsMap[y] = rowsMap[y]||[]).push({x, t});
+      });
+      Object.keys(rowsMap).map(Number).sort((a,b)=>b-a).forEach(y=>{
+        const testo = rowsMap[y].sort((a,b)=>a.x-b.x).map(i=>i.t).join(' ').trim();
+        if(testo) lines.push(testo);
+      });
+    }
+    const testoCompleto = lines.join('\n');
+    if(!/turno\s+libero/i.test(testoCompleto)) return {}; // non è questo tipo di documento
+
+    // Titolo evento: dalla sezione "OGGETTO", tolto il preambolo burocratico generico.
+    let titolo = '';
+    const idxOggetto = lines.findIndex(l=>/^oggetto\s*:?\s*$/i.test(l.trim()) || /^oggetto\s*:/i.test(l.trim()));
+    if(idxOggetto>=0){
+      const parts = [];
+      const stessaRiga = lines[idxOggetto].replace(/^oggetto\s*:?\s*/i,'').trim();
+      if(stessaRiga) parts.push(stessaRiga);
+      for(let i=idxOggetto+1; i<lines.length && parts.length<8; i++){
+        const l = lines[i].trim();
+        if(!l) break;
+        if(/^(responsabile|il direttore|premesse|dato atto)/i.test(l)) break;
+        parts.push(l);
+      }
+      titolo = parts.join(' ').replace(/\s+/g,' ').trim();
+    }
+    titolo = titolo.replace(/^modifica\s+(temporanea|provvisoria)?\s*(dei|del)\s+turni?\s+di\s+servizio\s*(taxi)?\s*(in\s+occasione\s+dell[a'’])?\s*/i, '').trim();
+    titolo = titolo.replace(/^["“]+|["”]+$/g, '').trim();
+    if(!titolo) titolo = 'Turno libero taxi';
+
+    // Le date valide sono quelle vicine alla sezione "DETERMINA" (la parte finale e autoritativa
+    // dell'atto), non quelle citate nelle premesse che possono riportare il periodo dell'evento
+    // per intero anche se il turno libero riguarda solo alcuni giorni di quel periodo.
+    const idxDetermina = lines.findIndex(l=>/^determina\s*$/i.test(l.trim()));
+    const testoRicerca = idxDetermina>=0 ? lines.slice(idxDetermina).join('\n') : testoCompleto;
+
+    const meseRe = Object.keys(MESI_IT).join('|');
+    const reRange1 = new RegExp(`dal\\s+(\\d{1,2})\\s+al\\s+(\\d{1,2})\\s+(${meseRe})\\s+(\\d{4})`, 'gi');
+    const reRange2 = new RegExp(`(\\d{1,2})\\s+e\\s+(\\d{1,2})\\s+(${meseRe})\\s+(\\d{4})`, 'gi');
+    function trovaRangePiuVicino(testo, re){
+      const idxTL = testo.toLowerCase().indexOf('turno libero');
+      let migliore=null, migliorDist=Infinity, m;
+      re.lastIndex = 0;
+      while((m = re.exec(testo))){
+        const dist = idxTL>=0 ? Math.abs(m.index-idxTL) : 0;
+        if(dist<migliorDist){ migliorDist=dist; migliore=m; }
+      }
+      return migliore;
+    }
+    let m = trovaRangePiuVicino(testoRicerca, reRange1) || trovaRangePiuVicino(testoRicerca, reRange2)
+         || trovaRangePiuVicino(testoCompleto, reRange1) || trovaRangePiuVicino(testoCompleto, reRange2);
+    if(!m) return {};
+
+    const g1 = parseInt(m[1],10), g2 = parseInt(m[2],10);
+    const mese = MESI_IT[m[3].toLowerCase()];
+    const anno = parseInt(m[4],10) || annoDefault;
+    const giorni = [];
+    for(let d=Math.min(g1,g2); d<=Math.max(g1,g2); d++) giorni.push(mkKey(anno, mese, d));
+
+    let sede = null;
+    const mComune = testoCompleto.match(/territorio\s+comunale\s+di\s+([A-ZÀ-Ù][a-zà-ù']+)/i);
+    if(mComune) sede = mComune[1];
+
+    const map = {};
+    giorni.forEach(k=>{
+      (map[k] = map[k]||[]).push({
+        tipo: 'turno_libero',
+        nome: titolo,
+        sede: sede,
+        orario: 'Turno libero, senza limiti di orario',
+        periodo: m[0].trim().replace(/\s+/g,' ')
+      });
+    });
+    return map;
+  }
+
   async function importEventiFromFile(file){
     const anno = annoDaNomeFile(file.name);
-    const buf = await file.arrayBuffer();
-    const map = await parseEventiPdf(buf, anno);
+    let map = await parseEventiPdf(await file.arrayBuffer(), anno);
+    if(Object.keys(map).length===0){
+      // Non è il formato a tabella di Fiera Milano: provo il formato "determinazione turno libero".
+      map = await parseTurnoLiberoPdf(await file.arrayBuffer(), anno);
+    }
     const giorni = Object.keys(map);
     if(giorni.length===0){ showToast('Nessun evento riconosciuto nel PDF'); return; }
     if(!state.eventi) state.eventi = {};
@@ -5438,15 +5530,27 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     if(evts.length===0){
       list.innerHTML = `<div class="subnote">Nessun evento per oggi. Tocca “＋ PDF” per importare il calendario mensile di Fiera Milano.</div>`;
     } else {
-      evts.forEach(ev=>{
+      const turnoLibero = evts.filter(e=>e.tipo==='turno_libero');
+      const normali = evts.filter(e=>e.tipo!=='turno_libero');
+
+      function rigaEvento(ev, isTurnoLibero){
         const row = document.createElement('div');
-        row.style.cssText='padding:10px 12px; margin-bottom:8px; background:var(--surface-2); border:1px solid var(--border); border-left:3px solid var(--amber-line); border-radius:9px;';
-        let html = `<div style="font-weight:700; font-size:15px; color:var(--ink);">${escapeHtml(ev.nome)}</div>`;
+        if(isTurnoLibero){
+          row.style.cssText='padding:12px 14px; margin-bottom:10px; background:var(--green-soft); border:1.5px solid var(--green-line); border-radius:10px;';
+        } else {
+          row.style.cssText='padding:10px 12px; margin-bottom:8px; background:var(--surface-2); border:1px solid var(--border); border-left:3px solid var(--amber-line); border-radius:9px;';
+        }
+        let html = '';
+        if(isTurnoLibero){
+          html += `<div style="font-size:11px; font-weight:700; letter-spacing:0.06em; text-transform:uppercase; color:var(--green);">🟢 Turno libero oggi</div>`;
+          html += `<div style="font-weight:700; font-size:15px; color:var(--ink); margin-top:3px;">${escapeHtml(ev.nome)}</div>`;
+        } else {
+          html += `<div style="font-weight:700; font-size:15px; color:var(--ink);">${escapeHtml(ev.nome)}</div>`;
+        }
         if(ev.sede) html += `<div style="font-size:13px; color:var(--ink-muted); margin-top:2px;">📍 ${escapeHtml(ev.sede)}</div>`;
-        if(ev.orario) html += `<div style="font-size:13px; color:var(--ink-muted); margin-top:2px;">🕐 ${escapeHtml(ev.orario)}</div>`;
+        if(ev.orario) html += `<div style="font-size:13px; ${isTurnoLibero?'font-weight:600; color:var(--green);':'color:var(--ink-muted);'} margin-top:2px;">🕐 ${escapeHtml(ev.orario)}</div>`;
         if(ev.periodo) html += `<div style="font-size:11px; color:var(--ink-faint); margin-top:3px;">${escapeHtml(ev.periodo)}</div>`;
         row.innerHTML = html;
-        // rimozione singolo evento con long-press / doppio tap: uso un pulsantino
         const del = document.createElement('button');
         del.textContent='✕'; del.title='Rimuovi';
         del.style.cssText='float:right; background:none; border:none; color:var(--ink-faint); font-size:14px; cursor:pointer; margin-top:-2px;';
@@ -5458,8 +5562,11 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           await saveState(); renderMain();
         });
         row.insertBefore(del, row.firstChild);
-        list.appendChild(row);
-      });
+        return row;
+      }
+
+      turnoLibero.forEach(ev=> list.appendChild(rigaEvento(ev, true)));
+      normali.forEach(ev=> list.appendChild(rigaEvento(ev, false)));
     }
     card.appendChild(list);
     container.appendChild(card);
