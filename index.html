@@ -3933,27 +3933,29 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return out.replace(/\s{2,}/g,' ').trim();
   }
 
-  // Periodo reale coperto dalle scansioni (data minima e massima).
-  function scanPeriodo(){
-    const dates = (state.scansioni||[]).map(e=> e && e.data).filter(Boolean).sort();
+  // Periodo reale coperto dalle scansioni (data minima e massima). Se non passo un elenco
+  // specifico, considera tutte le scansioni (comportamento del pulsante generale).
+  function scanPeriodo(customList){
+    const src = customList || state.scansioni || [];
+    const dates = src.map(e=> e && e.data).filter(Boolean).sort();
     if(!dates.length) return null;
     return { min: dates[0], max: dates[dates.length-1] };
   }
   // Titolo usato sia nel PDF sia (in versione "sicura" per i file) come nome del file condiviso.
-  function scanPdfTitolo(){
-    const p = scanPeriodo();
+  function scanPdfTitolo(customList){
+    const p = scanPeriodo(customList);
     if(!p) return 'Riepilogo corse';
     if(p.min === p.max) return `Riepilogo corse periodo ${fmtDataIt(p.min)}`;
     return `Riepilogo corse periodo dal ${fmtDataIt(p.min)} al ${fmtDataIt(p.max)}`;
   }
-  function scanPdfFilename(){
-    const p = scanPeriodo();
+  function scanPdfFilename(customList){
+    const p = scanPeriodo(customList);
     if(!p) return `Riepilogo corse.pdf`;
     if(p.min === p.max) return `Riepilogo corse periodo ${fmtDataIt(p.min).replace(/\//g,'-')}.pdf`;
     return `Riepilogo corse periodo dal ${fmtDataIt(p.min).replace(/\//g,'-')} al ${fmtDataIt(p.max).replace(/\//g,'-')}.pdf`;
   }
 
-  async function buildScansioniPdf(){
+  async function buildScansioniPdf(customList){
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -3970,7 +3972,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const anag = state.settings.scanAnagrafica || {};
     // Ordine per ID corsa crescente (natural sort: "2" prima di "10").
     // Le corse senza ID vengono spinte in fondo.
-    const list = [...(state.scansioni||[])].sort((a,b)=>{
+    const list = [...(customList || state.scansioni || [])].sort((a,b)=>{
       const ia = (a.id||'').trim(), ib = (b.id||'').trim();
       if(!ia && !ib) return 0;
       if(!ia) return 1;
@@ -4078,15 +4080,15 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     return pdfDoc;
   }
 
-  async function exportScansioniPdf(btn){
+  async function exportScansioniPdf(btn, customList){
     if(!window.PDFLib){ showToast('Libreria PDF non caricata, controlla la connessione'); return; }
     btn.disabled = true;
     showToast('Genero il PDF…');
-    const pdfDoc = await buildScansioniPdf();
+    const pdfDoc = await buildScansioniPdf(customList);
     const bytes = await pdfDoc.save();
     const blob = bytesToBlob(bytes);
     btn.disabled = false;
-    replaceWithOpenLink(btn, blob, scanPdfFilename());
+    replaceWithOpenLink(btn, blob, scanPdfFilename(customList));
   }
 
   // Aggancia lo swipe-per-eliminare (stesso gesto delle voci in Oggi) a un elenco di righe già
@@ -4283,6 +4285,12 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
               expandedPagamentoId = null;
               renderMain();
             });
+            const pdfPagBtn = document.createElement('button');
+            pdfPagBtn.className='save-btn';
+            pdfPagBtn.style.cssText='margin-top:8px;';
+            pdfPagBtn.textContent='📄 Genera PDF di questo pagamento';
+            pdfPagBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); exportScansioniPdf(pdfPagBtn, corse); });
+            body.appendChild(pdfPagBtn);
             body.appendChild(reopenAllBtn);
             pagCard.appendChild(body);
           }
