@@ -950,7 +950,12 @@
       <h4>Manutenzione dati</h4>
       <div class="subnote" style="margin-bottom:10px;">Un vecchio bug (ora corretto) poteva scrivere un "km inizio" su giorni mai lavorati, senza il relativo "km fine". Non incide sui calcoli, ma puoi ripulirli qui.</div>
       <div id="kmOrfaniStatus" class="subnote" style="margin-bottom:8px;"></div>
-      <button class="save-btn" id="pulisciKmOrfaniBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">🧹 Ripulisci km senza turno</button>
+      <button class="save-btn" id="pulisciKmOrfaniBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border); margin-bottom:16px;">🧹 Ripulisci km senza turno</button>
+
+      <div class="subnote" style="margin-bottom:10px;">Corse o spese identiche (stesso giorno, ora, importo, metodo) che risultano duplicate — es. per un accavallamento di account sullo stesso telefono. Qui puoi controllarle prima di eliminare i doppioni.</div>
+      <div id="doppioniStatus" class="subnote" style="margin-bottom:8px;"></div>
+      <div id="doppioniLista"></div>
+      <button class="save-btn" id="trovaDoppioniBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">🔍 Controlla doppioni corse/spese</button>
     </div>
 
     <div class="settings-section" id="backupSection">
@@ -1158,6 +1163,12 @@
   function cloudOn(){ return !!sb; }
 
   let currentUser = null;
+  // Chiave di salvataggio locale: se sei loggato, è specifica per il tuo account (per id utente),
+  // così due persone che usano lo stesso telefono/browser non si ritrovano mai i dati mescolati.
+  // Senza login (modalità solo locale, se Supabase non è configurato) resta quella storica.
+  function storageKey(){
+    return currentUser && currentUser.id ? `taxi31-log-${currentUser.id}` : 'taxi31-log';
+  }
   let cloudTimer  = null;
   let cloudBusy   = false;
 
@@ -1233,7 +1244,7 @@
         applyLoadedState(remote);
         mergeCollezioniAdditive(localSnapshot, state);
         if(generaSpeseRicorrenti()) state.updatedAt = new Date().toISOString();
-        await window.storage.set('taxi31-log', JSON.stringify(state), false);
+        await window.storage.set(storageKey(), JSON.stringify(state), false);
         if(typeof renderMain==='function') renderMain();
         setPill('Dati aggiornati dal cloud', true);
         scheduleCloudPush();
@@ -1654,7 +1665,7 @@
   }
   async function loadState(){
     try{
-      const res = await window.storage.get('taxi31-log', false);
+      const res = await window.storage.get(storageKey(), false);
       if(res && res.value){
         applyLoadedState(JSON.parse(res.value));
       }
@@ -1663,7 +1674,7 @@
   }
   async function saveState(){
     state.updatedAt = new Date().toISOString();
-    try{ await window.storage.set('taxi31-log', JSON.stringify(state), false); }
+    try{ await window.storage.set(storageKey(), JSON.stringify(state), false); }
     catch(e){ showToast('Errore di salvataggio'); console.error(e); }
     scheduleCloudPush();
   }
@@ -6100,6 +6111,84 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     renderKmOrfaniStatus();
     showToast(`Ripuliti ${orfani.length} giorni`);
   });
+
+  // Trova voci (corse/spese) identiche nello stesso giorno: stesso tipo/categoria, metodo, importo
+  // e orario. Non elimina nulla in automatico: mostra i gruppi e lascia scegliere quali copie togliere.
+  function trovaDoppioni(){
+    const gruppi = [];
+    Object.keys(state.days).forEach(dayKey=>{
+      const day = state.days[dayKey];
+      if(!day.entries || day.entries.length<2) return;
+      const bySig = {};
+      day.entries.forEach(e=>{
+        const cat = e.kind==='spesa' ? (e.sottocategoria||e.tipo||'') : (e.tipo||'');
+        const sig = [e.kind, cat, e.metodo, e.importo, e.time||''].join('|');
+        (bySig[sig] = bySig[sig]||[]).push(e);
+      });
+      Object.values(bySig).forEach(list=>{ if(list.length>1) gruppi.push({ dayKey, entries:list }); });
+    });
+    return gruppi;
+  }
+  let doppioniSelezionati = new Set();
+  function renderDoppioniLista(){
+    const box = document.getElementById('doppioniLista');
+    const status = document.getElementById('doppioniStatus');
+    const gruppi = trovaDoppioni();
+    box.innerHTML = '';
+    doppioniSelezionati.clear();
+    if(gruppi.length===0){
+      status.textContent = 'Nessun doppione trovato.';
+      return;
+    }
+    const totaleVoci = gruppi.reduce((s,g)=>s+g.entries.length,0);
+    status.textContent = `${gruppi.length} gruppi di doppioni trovati (${totaleVoci} voci in totale). Sotto ogni gruppo scegli quali copie eliminare: di default tengo la prima e spunto le altre.`;
+    gruppi.forEach(g=>{
+      const wrap = document.createElement('div');
+      wrap.style.cssText = 'border:1px solid var(--border); border-radius:9px; padding:10px; margin-bottom:10px; background:var(--surface-2);';
+      const first = g.entries[0];
+      const cat = first.kind==='spesa' ? (CATEGORIA_LABEL[first.sottocategoria||first.tipo]||first.sottocategoria||first.tipo||'') : (TIPOLOGIA_FULL[first.tipo]||first.tipo||'');
+      const label = `${fmtDataIt(g.dayKey)} · ${first.time||'—'} · ${first.kind==='spesa'?'Spesa':'Entrata'} ${cat} · ${METODO_LABEL[first.metodo]||first.metodo} · ${fmtMoney(first.importo)} €`;
+      wrap.innerHTML = `<div style="font-weight:600; font-size:13.5px; margin-bottom:8px;">${escapeHtml(label)} <span style="color:var(--ink-faint); font-weight:400;">(${g.entries.length} copie)</span></div>`;
+      g.entries.forEach((e, idx)=>{
+        const row = document.createElement('label');
+        row.style.cssText = 'display:flex; align-items:center; gap:8px; padding:4px 0; cursor:pointer; font-size:12.5px;';
+        const daEliminare = idx>0;
+        if(daEliminare) doppioniSelezionati.add(e.id);
+        row.innerHTML = `<input type="checkbox" ${daEliminare?'checked':''} style="width:18px; height:18px; flex:none; accent-color:var(--red);"><span>Copia ${idx+1}${idx===0?' — verrà mantenuta di default' : ' — verrà eliminata'} <span style="color:var(--ink-faint);">(id ${escapeHtml(String(e.id).slice(0,8))}…)</span></span>`;
+        row.querySelector('input').addEventListener('change', (ev)=>{
+          if(ev.target.checked) doppioniSelezionati.add(e.id); else doppioniSelezionati.delete(e.id);
+        });
+        wrap.appendChild(row);
+      });
+      box.appendChild(wrap);
+    });
+    const confermaBtn = document.createElement('button');
+    confermaBtn.className = 'save-btn';
+    confermaBtn.style.cssText = 'background:var(--red-soft); color:var(--red); border:1px solid var(--red-line); margin-top:6px;';
+    confermaBtn.textContent = '🗑 Elimina le copie selezionate';
+    confermaBtn.addEventListener('click', async ()=>{
+      if(doppioniSelezionati.size===0){ showToast('Nessuna copia selezionata'); return; }
+      const ok = await askConfirm(
+        'Eliminare i doppioni selezionati?',
+        `Verranno eliminate ${doppioniSelezionati.size} voci duplicate. L'operazione non è reversibile.`,
+        'Elimina'
+      );
+      if(!ok) return;
+      let rimosse = 0;
+      Object.keys(state.days).forEach(dayKey=>{
+        const day = state.days[dayKey];
+        if(!day.entries) return;
+        const prima = day.entries.length;
+        day.entries = day.entries.filter(e=>!doppioniSelezionati.has(e.id));
+        rimosse += prima - day.entries.length;
+      });
+      await saveState();
+      showToast(`Eliminate ${rimosse} voci duplicate`);
+      renderDoppioniLista();
+    });
+    box.appendChild(confermaBtn);
+  }
+  document.getElementById('trovaDoppioniBtn').addEventListener('click', renderDoppioniLista);
 
   function openSettingsSheet(){
     buildMethodToggles();
