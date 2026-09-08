@@ -946,6 +946,15 @@
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
     </div>
 
+    <div class="settings-section" id="turnoNotturnoSection">
+      <h4>Turno notturno</h4>
+      <div class="subnote" style="margin-bottom:10px;">Se il turno scavalla la mezzanotte (es. inizio ore 20:00, fine ore 06:00), le ore e i km restano sempre corretti in ogni caso. Questa impostazione riguarda solo dove finiscono le singole corse/spese registrate dopo mezzanotte.</div>
+      <label style="display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; padding:4px 0;">
+        <span style="font-size:14px;">Tieni tutto sul giorno di inizio turno<br><span class="subnote" style="font-size:11.5px;">Se spento (consigliato): le corse dopo mezzanotte vanno da sole sul giorno giusto.</span></span>
+        <span class="switch"><input type="checkbox" id="setTurnoNotturno"><span class="track"></span><span class="thumb"></span></span>
+      </label>
+    </div>
+
     <div class="settings-section" id="pulizieSection">
       <h4>Manutenzione dati</h4>
       <div class="subnote" style="margin-bottom:10px;">Un vecchio bug (ora corretto) poteva scrivere un "km inizio" su giorni mai lavorati, senza il relativo "km fine". Non incide sui calcoli, ma puoi ripulirli qui.</div>
@@ -1561,6 +1570,7 @@
     dirittoCamerale: 53,
     addRegionaleAttiva: false,
     addRegionalePerc: 1.73,
+    turnoNotturnoManuale: false,
     scanAnagrafica: { nome:'', sigla:'', seriale:'', iban:'' },
     registro: { conducente:'', indirizzo:'', citta:'', vettura1:'', targa1:'', civ1:'', alim1:'', vettura2:'', targa2:'', civ2:'', alim2:'', codUtente:'', intestazione:true }
   };
@@ -2161,11 +2171,19 @@
       renderMain();
       return;
     }
-    const dt = new Date(`${dayKey}T${val}:00`);
+    let dt = new Date(`${dayKey}T${val}:00`);
     if(dt.getTime() < new Date(day.shiftStart).getTime()){
-      showToast("La fine deve essere dopo l'inizio");
-      renderMain();
-      return;
+      // L'orario scritto, sullo stesso giorno dell'inizio, cade prima dell'inizio: quasi certamente
+      // il turno ha scavallato la mezzanotte (es. inizio 20:00, fine 06:00). Riprovo sul giorno dopo.
+      const dGiornoDopo = new Date(dayKey+'T00:00:00'); dGiornoDopo.setDate(dGiornoDopo.getDate()+1);
+      const dtGiornoDopo = new Date(`${dateKey(dGiornoDopo)}T${val}:00`);
+      if(dtGiornoDopo.getTime() > new Date(day.shiftStart).getTime()){
+        dt = dtGiornoDopo;
+      } else {
+        showToast("La fine deve essere dopo l'inizio");
+        renderMain();
+        return;
+      }
     }
     if(day.pauseStart){
       const elapsed = Math.max(0, Math.round((dt.getTime() - new Date(day.pauseStart).getTime())/60000));
@@ -5627,6 +5645,23 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   }
   document.getElementById('entryDateInput').addEventListener('input', updateEntryDateHighlight);
 
+  // Data/ora di default per una NUOVA voce, tenendo conto di un turno che ha scavallato la
+  // mezzanotte. Se sto guardando un giorno con un turno ancora aperto (es. ieri sera) mentre
+  // in realtà è già un altro giorno adesso, la corsa che aggiungo ORA è successa davvero oggi
+  // — a meno che l'impostazione "tieni tutto sul giorno di inizio turno" non sia attiva.
+  function calcolaDataOraDefaultVoce(){
+    const dayKeyVista = dateKey(viewDate);
+    const oraReale = nowTimeStr();
+    const oggiReale = dateKey(new Date());
+    if(!state.settings.turnoNotturnoManuale && dayKeyVista !== oggiReale){
+      const giorno = state.days[dayKeyVista];
+      if(giorno && giorno.shiftStart && !giorno.shiftEnd){
+        return { data: oggiReale, ora: oraReale };
+      }
+    }
+    return { data: dayKeyVista, ora: isSameDay(viewDate,new Date()) ? oraReale : '12:00' };
+  }
+
   function openEntrySheet(existingEntry, defaultKind){
     editingEntryId = existingEntry ? existingEntry.id : null;
     document.querySelector('#overlay .sheet-head h3').textContent = editingEntryId ? 'Modifica voce' : 'Aggiungi voce';
@@ -5645,8 +5680,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       formKind = defaultKind || 'entrata'; formTipo = 'radio'; formMetodo = formKind==='spesa' ? 'contanti' : 'carta'; formAltroCat = 'carburante';
       document.getElementById('amtInput').value='';
       document.getElementById('noteInput').value='';
-      document.getElementById('timeInput').value = isSameDay(viewDate,new Date()) ? nowTimeStr() : '12:00';
-      document.getElementById('entryDateInput').value = dateKey(viewDate);
+      const dft = calcolaDataOraDefaultVoce();
+      document.getElementById('timeInput').value = dft.ora;
+      document.getElementById('entryDateInput').value = dft.data;
     }
     updateEntryDateHighlight();
     document.getElementById('altroCatSelect').value = formAltroCat;
@@ -6206,6 +6242,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('setAddRegAttiva').checked = state.settings.addRegionaleAttiva;
     document.getElementById('setAddRegPerc').value = state.settings.addRegionalePerc;
     document.getElementById('setCamerale').value = state.settings.dirittoCamerale;
+    document.getElementById('setTurnoNotturno').checked = state.settings.turnoNotturnoManuale;
     document.getElementById('setScanNome').value = state.settings.scanAnagrafica.nome;
     document.getElementById('setScanSigla').value = state.settings.scanAnagrafica.sigla;
     document.getElementById('setScanSeriale').value = state.settings.scanAnagrafica.seriale;
@@ -6492,6 +6529,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     state.settings.addRegionaleAttiva = document.getElementById('setAddRegAttiva').checked;
     state.settings.addRegionalePerc = parseFloat(document.getElementById('setAddRegPerc').value) || 0;
     state.settings.dirittoCamerale = parseFloat(document.getElementById('setCamerale').value) || 0;
+    state.settings.turnoNotturnoManuale = document.getElementById('setTurnoNotturno').checked;
     state.settings.scanAnagrafica = {
       nome: document.getElementById('setScanNome').value.trim(),
       sigla: document.getElementById('setScanSigla').value.trim(),
