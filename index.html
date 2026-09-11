@@ -5653,13 +5653,17 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     const dayKeyVista = dateKey(viewDate);
     const oraReale = nowTimeStr();
     const oggiReale = dateKey(new Date());
-    if(!state.settings.turnoNotturnoManuale && dayKeyVista !== oggiReale){
-      const giorno = state.days[dayKeyVista];
-      if(giorno && giorno.shiftStart && !giorno.shiftEnd){
-        return { data: oggiReale, ora: oraReale };
+    // Turno ancora aperto sul giorno che sto guardando, mentre in realtà è già un altro giorno:
+    // sto aggiungendo qualcosa che succede ORA, durante un turno a cavallo della mezzanotte.
+    const giorno = state.days[dayKeyVista];
+    const turnoNotturnoInCorso = dayKeyVista !== oggiReale && giorno && giorno.shiftStart && !giorno.shiftEnd;
+    if(turnoNotturnoInCorso){
+      if(!state.settings.turnoNotturnoManuale){
+        return { data: oggiReale, ora: oraReale }; // flag spento: la voce va sul giorno vero
       }
+      return { data: dayKeyVista, ora: oraReale }; // flag acceso: resta su ieri, ma l'ora è comunque quella reale
     }
-    return { data: dayKeyVista, ora: isSameDay(viewDate,new Date()) ? oraReale : '12:00' };
+    return { data: dayKeyVista, ora: isSameDay(viewDate,new Date()) ? oraReale : '' };
   }
 
   function openEntrySheet(existingEntry, defaultKind){
