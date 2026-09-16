@@ -1936,7 +1936,20 @@
       const pauseRow = document.createElement('div'); pauseRow.className='field'; pauseRow.style.marginTop='12px';
       pauseRow.innerHTML = `<label>Minuti di pausa nel turno</label><input type="number" inputmode="numeric" id="pauseMinsInput" value="${day.pausedMinutes||0}">`;
       panel.appendChild(pauseRow);
-      pauseRow.querySelector('#pauseMinsInput').addEventListener('change', (e)=> setPauseMinutesManual(dayKey, e.target.value));
+      const pauseInputEl = pauseRow.querySelector('#pauseMinsInput');
+      let pauseMinsTO = null;
+      // Stesso doppio salvataggio già usato per gli orari di inizio/fine turno: l'evento "change"
+      // da solo non è sempre affidabile su mobile se si tocca subito un altro pulsante dopo aver
+      // scritto, quindi salvo anche su "input" (con un margine) oltre che su "blur".
+      pauseInputEl.addEventListener('input', (e)=>{
+        const val = e.target.value;
+        clearTimeout(pauseMinsTO);
+        pauseMinsTO = setTimeout(()=> setPauseMinutesManual(dayKey, val), 4000);
+      });
+      pauseInputEl.addEventListener('blur', (e)=>{
+        clearTimeout(pauseMinsTO);
+        setPauseMinutesManual(dayKey, e.target.value);
+      });
       const pauseNote = document.createElement('div'); pauseNote.className='subnote';
       pauseNote.textContent = 'Correggi qui i minuti di pausa se hai dimenticato di riprendere il turno.';
       panel.appendChild(pauseNote);
