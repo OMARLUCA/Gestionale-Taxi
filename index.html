@@ -1806,6 +1806,11 @@
 
   // ---------- Shift capsule ----------
   let shiftDetailsExpanded = false;
+  // Timer di sicurezza per il salvataggio di orari/pausa turno: DEVONO restare qui, fuori dalle
+  // funzioni di render, altrimenti un ridisegno della schermata (che capita spesso, anche per motivi
+  // non collegati) ne perde il riferimento e un timer "orfano" può scattare più tardi con un valore
+  // ormai superato, sovrascrivendo una correzione fatta nel frattempo.
+  let shiftStartTO=null, shiftEndTO=null, pauseMinsTO=null;
   function kmFineGiornoPrecedente(dayKey){
     const d = new Date(dayKey+'T00:00:00');
     for(let i=0; i<366; i++){
@@ -1898,7 +1903,6 @@
     const fineVal = day.shiftEnd ? new Date(day.shiftEnd).toTimeString().slice(0,5) : '';
     tf.innerHTML = `<div class="field"><label>Inizio turno</label><input type="time" id="shiftStartInput" value="${inizioVal}"></div>
       <div class="field"><label>Fine turno</label><input type="time" id="shiftEndInput" value="${fineVal}"></div>`;
-    let shiftStartTO=null, shiftEndTO=null;
     const startEl = tf.querySelector('#shiftStartInput');
     const endEl = tf.querySelector('#shiftEndInput');
     // Il salvataggio (che ricostruisce la card) avviene quando lasci davvero il campo (blur),
@@ -1937,7 +1941,6 @@
       pauseRow.innerHTML = `<label>Minuti di pausa nel turno</label><input type="number" inputmode="numeric" id="pauseMinsInput" value="${day.pausedMinutes||0}">`;
       panel.appendChild(pauseRow);
       const pauseInputEl = pauseRow.querySelector('#pauseMinsInput');
-      let pauseMinsTO = null;
       // Stesso doppio salvataggio già usato per gli orari di inizio/fine turno: l'evento "change"
       // da solo non è sempre affidabile su mobile se si tocca subito un altro pulsante dopo aver
       // scritto, quindi salvo anche su "input" (con un margine) oltre che su "blur".
