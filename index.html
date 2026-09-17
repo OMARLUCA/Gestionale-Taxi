@@ -1810,7 +1810,8 @@
   // funzioni di render, altrimenti un ridisegno della schermata (che capita spesso, anche per motivi
   // non collegati) ne perde il riferimento e un timer "orfano" può scattare più tardi con un valore
   // ormai superato, sovrascrivendo una correzione fatta nel frattempo.
-  let shiftStartTO=null, shiftEndTO=null, pauseMinsTO=null;
+  let shiftStartTO=null, shiftEndTO=null, pauseMinsTO=null, kmSaveTO=null, kmAnnoTO=null;
+  let kmCardTO=null, noteMeseTO=null, medTO=null, ammTO=null, credTO=null, accVersTO=null;
   function kmFineGiornoPrecedente(dayKey){
     const d = new Date(dayKey+'T00:00:00');
     for(let i=0; i<366; i++){
@@ -1971,7 +1972,6 @@
       else delta.innerHTML = `<div class="num" style="color:var(--ink-faint)">—</div><div class="lbl">inserisci km inizio e fine</div>`;
     }
     panel.appendChild(delta); renderDelta();
-    let kmSaveTO=null;
     function scheduleKmSave(){
       clearTimeout(kmSaveTO);
       kmSaveTO = setTimeout(async ()=>{
@@ -1981,8 +1981,17 @@
         await saveState();
       }, 500);
     }
+    function salvaKmSubito(){
+      clearTimeout(kmSaveTO);
+      const s = kg.querySelector('#kmStart').value, e = kg.querySelector('#kmFine').value;
+      const d = ensureDay(dayKey);
+      d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+      saveState();
+    }
     kg.querySelector('#kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
     kg.querySelector('#kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
+    kg.querySelector('#kmStart').addEventListener('blur', salvaKmSubito);
+    kg.querySelector('#kmFine').addEventListener('blur', salvaKmSubito);
 
     if(isToday && (isRunning || isPaused)){
       const actions = document.createElement('div'); actions.className='shift-actions';
@@ -2242,18 +2251,26 @@
       else delta.innerHTML = `<div class="num" style="color:var(--ink-faint)">—</div><div class="lbl">inserisci km inizio e fine</div>`;
     }
     card.appendChild(delta); container.appendChild(card); renderDelta();
-    let saveTO=null;
     function scheduleSave(){
-      clearTimeout(saveTO);
-      saveTO = setTimeout(async ()=>{
+      clearTimeout(kmCardTO);
+      kmCardTO = setTimeout(async ()=>{
         const s = document.getElementById('kmStart').value, e = document.getElementById('kmFine').value;
         const d = ensureDay(dayKey);
         d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
         await saveState();
       }, 500);
     }
+    function salvaSubito(){
+      clearTimeout(kmCardTO);
+      const s = document.getElementById('kmStart').value, e = document.getElementById('kmFine').value;
+      const d = ensureDay(dayKey);
+      d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+      saveState();
+    }
     document.getElementById('kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleSave(); });
     document.getElementById('kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleSave(); });
+    document.getElementById('kmStart').addEventListener('blur', salvaSubito);
+    document.getElementById('kmFine').addEventListener('blur', salvaSubito);
   }
 
   function renderDeleteDayCard(container, dayKey){
@@ -4544,11 +4561,14 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       <div class="form-row" style="margin-top:12px;"><label>Note (vanno nelle Annotazioni del PDF)</label><textarea id="noteInput" rows="3" style="width:100%; box-sizing:border-box; background:var(--surface-2); border:1px solid var(--border); color:var(--ink); font-family:'Inter', sans-serif; font-size:14px; padding:10px; border-radius:9px; resize:vertical;">${escapeHtml(mrecC.note||'')}</textarea></div>`;
     container.appendChild(regCard);
 
-    let mTO=null;
     regCard.querySelector('#noteInput').addEventListener('input', (e)=>{
       const val = e.target.value;
-      clearTimeout(mTO);
-      mTO = setTimeout(async ()=>{ const mr = ensureMonth(mkeyC); mr.note = val; await saveState(); }, 500);
+      clearTimeout(noteMeseTO);
+      noteMeseTO = setTimeout(async ()=>{ const mr = ensureMonth(mkeyC); mr.note = val; await saveState(); }, 500);
+    });
+    regCard.querySelector('#noteInput').addEventListener('blur', (e)=>{
+      clearTimeout(noteMeseTO);
+      const mr = ensureMonth(mkeyC); mr.note = e.target.value; saveState();
     });
     regCard.querySelector('#editRegistroBtn').addEventListener('click', openRegistroSheet);
 
@@ -4679,7 +4699,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     medNote.textContent = 'Un unico totale per l\'intero anno, non più da inserire mese per mese.';
     cMed.appendChild(medNote);
     container.appendChild(cMed);
-    let medTO=null;
     medRow.querySelector('#medInput').addEventListener('input', (e)=>{
       const val = parseFloat(e.target.value);
       clearTimeout(medTO);
@@ -4688,6 +4707,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         yrec.speseMediche = isNaN(val) ? 0 : val;
         await saveState();
       }, 500);
+    });
+    medRow.querySelector('#medInput').addEventListener('blur', (e)=>{
+      clearTimeout(medTO);
+      const val = parseFloat(e.target.value);
+      const yrec = ensureYear(`${year}`);
+      yrec.speseMediche = isNaN(val) ? 0 : val;
+      saveState();
     });
 
     const cAmm = document.createElement('div'); cAmm.className='card';
@@ -4700,7 +4726,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     ammNote.textContent = 'Dato annuale, calcolato dal commercialista in base al costo e al piano di ammortamento del veicolo. Riduce la base imponibile solo nel regime ordinario: nel forfettario non si deducono le spese reali.';
     cAmm.appendChild(ammNote);
     container.appendChild(cAmm);
-    let ammTO=null;
     ammRow.querySelector('#ammInput').addEventListener('input', (e)=>{
       const val = parseFloat(e.target.value);
       clearTimeout(ammTO);
@@ -4709,6 +4734,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         yrec.ammortamentoAutoveicolo = isNaN(val) ? 0 : val;
         await saveState();
       }, 500);
+    });
+    ammRow.querySelector('#ammInput').addEventListener('blur', (e)=>{
+      clearTimeout(ammTO);
+      const val = parseFloat(e.target.value);
+      const yrec = ensureYear(`${year}`);
+      yrec.ammortamentoAutoveicolo = isNaN(val) ? 0 : val;
+      saveState();
     });
 
     // Annual comparison
@@ -4745,10 +4777,9 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     c4b.appendChild(kmNote);
     container.appendChild(c4b);
     renderKmResult();
-    let kmTO=null;
     function scheduleKmSave(){
-      clearTimeout(kmTO);
-      kmTO = setTimeout(async ()=>{
+      clearTimeout(kmAnnoTO);
+      kmAnnoTO = setTimeout(async ()=>{
         const ini = document.getElementById('kmIniInput').value;
         const fin = document.getElementById('kmFinInput').value;
         const yr = ensureYear(`${year}`);
@@ -4757,8 +4788,19 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         await saveState();
       }, 500);
     }
+    function salvaKmAnnoSubito(){
+      clearTimeout(kmAnnoTO);
+      const ini = document.getElementById('kmIniInput').value;
+      const fin = document.getElementById('kmFinInput').value;
+      const yr = ensureYear(`${year}`);
+      yr.kmIniziale = ini==='' ? null : parseFloat(ini);
+      yr.kmFinale = fin==='' ? null : parseFloat(fin);
+      saveState();
+    }
     document.getElementById('kmIniInput').addEventListener('input', ()=>{ renderKmResult(); scheduleKmSave(); });
     document.getElementById('kmFinInput').addEventListener('input', ()=>{ renderKmResult(); scheduleKmSave(); });
+    document.getElementById('kmIniInput').addEventListener('blur', salvaKmAnnoSubito);
+    document.getElementById('kmFinInput').addEventListener('blur', salvaKmAnnoSubito);
 
     const c4c = document.createElement('div'); c4c.className='card';
     c4c.innerHTML = `<h2>Credito dall'anno precedente</h2>`;
@@ -4769,7 +4811,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     credNote.textContent = `Se la dichiarazione dei redditi ${year-1} ha chiuso a credito (es. acconti versati in eccesso), inserisci qui l'importo: verrà scomputato dal totale dovuto per il ${year} in entrambi i regimi.`;
     c4c.appendChild(credNote);
     container.appendChild(c4c);
-    let credTO=null;
     credRow.querySelector('#creditoInput').addEventListener('input', (e)=>{
       const val = parseFloat(e.target.value);
       clearTimeout(credTO);
@@ -4778,6 +4819,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         yrec.creditoAnnoPrecedente = isNaN(val) ? 0 : Math.max(0,val);
         await saveState();
       }, 500);
+    });
+    credRow.querySelector('#creditoInput').addEventListener('blur', (e)=>{
+      clearTimeout(credTO);
+      const val = parseFloat(e.target.value);
+      const yrec = ensureYear(`${year}`);
+      yrec.creditoAnnoPrecedente = isNaN(val) ? 0 : Math.max(0,val);
+      saveState();
     });
 
     const c4d = document.createElement('div'); c4d.className='card';
@@ -4789,7 +4837,6 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     accVersNote.textContent = `Diverso dal credito sopra: qui inserisci gli acconti regolarmente versati durante l'anno (di solito quelli indicati nella dichiarazione ${year-1}, salvo cambi importanti negli incassi). Anche questo viene scomputato dal totale dovuto.`;
     c4d.appendChild(accVersNote);
     container.appendChild(c4d);
-    let accVersTO=null;
     accVersRow.querySelector('#accVersInput').addEventListener('input', (e)=>{
       const val = parseFloat(e.target.value);
       clearTimeout(accVersTO);
@@ -4798,6 +4845,13 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         yrec.accontiVersati = isNaN(val) ? 0 : Math.max(0,val);
         await saveState();
       }, 500);
+    });
+    accVersRow.querySelector('#accVersInput').addEventListener('blur', (e)=>{
+      clearTimeout(accVersTO);
+      const val = parseFloat(e.target.value);
+      const yrec = ensureYear(`${year}`);
+      yrec.accontiVersati = isNaN(val) ? 0 : Math.max(0,val);
+      saveState();
     });
 
     const c5 = document.createElement('div'); c5.className='card';
