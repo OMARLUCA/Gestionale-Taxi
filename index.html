@@ -961,6 +961,9 @@
       <div id="kmOrfaniStatus" class="subnote" style="margin-bottom:8px;"></div>
       <button class="save-btn" id="pulisciKmOrfaniBtn" style="background:var(--surface-2); color:var(--ink); border:1px solid var(--border); margin-bottom:16px;">🧹 Ripulisci km senza turno</button>
 
+      <div class="subnote" style="margin-bottom:6px;">Giorni lavorati a cui manca il km finale: i chilometri di quelle giornate restano fuori da tutti i totali.</div>
+      <div id="kmFineMancanteStatus" class="subnote" style="margin-bottom:16px;"></div>
+
       <div class="subnote" style="margin-bottom:10px;">Corse o spese identiche (stesso giorno, ora, importo, metodo) che risultano duplicate — es. per un accavallamento di account sullo stesso telefono. Qui puoi controllarle prima di eliminare i doppioni.</div>
       <div id="doppioniStatus" class="subnote" style="margin-bottom:8px;"></div>
       <div id="doppioniLista"></div>
@@ -1825,7 +1828,9 @@
     // Km inizio di default = km fine del giorno precedente, se non ancora impostato per oggi.
     // Solo per il giorno di OGGI: navigare indietro per controllare un giorno vecchio non deve
     // scrivere né salvare nulla su quel giorno.
-    if(isToday && day.kmStart==null){
+    // Nota: uno zero va trattato come "mancante", altrimenti il riporto non scatta mai e il
+    // conteggio dei km percorsi diventa assurdo (km fine meno zero).
+    if(isToday && (day.kmStart==null || day.kmStart===0)){
       const prevEnd = kmFineGiornoPrecedente(dayKey);
       if(prevEnd!=null){
         const dReal = ensureDay(dayKey);
@@ -2004,6 +2009,26 @@
     kg.querySelector('#kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
     kg.querySelector('#kmStart').addEventListener('blur', salvaKmSubito);
     kg.querySelector('#kmFine').addEventListener('blur', salvaKmSubito);
+
+    // Se il km inizio manca (o è zero) su un giorno che NON è oggi, il riporto automatico non
+    // scatta di proposito, per non scrivere nulla a sorpresa sullo storico. Offro però il valore
+    // come suggerimento, da applicare con un tocco.
+    if(!isToday && (day.kmStart==null || day.kmStart===0)){
+      const prevEnd = kmFineGiornoPrecedente(dayKey);
+      if(prevEnd!=null){
+        const sugg = document.createElement('button');
+        sugg.className = 'save-btn';
+        sugg.style.cssText = 'margin-top:8px; background:transparent; color:var(--ink-muted); border:1px solid var(--border); font-size:13px;';
+        sugg.textContent = `↩︎ Usa ${prevEnd.toLocaleString('it-IT')} km come km inizio (ultimo giorno lavorato)`;
+        sugg.addEventListener('click', async ()=>{
+          const d = ensureDay(dayKey);
+          d.kmStart = prevEnd;
+          await saveState();
+          renderMain();
+        });
+        panel.appendChild(sugg);
+      }
+    }
 
     if(isToday && (isRunning || isPaused)){
       const actions = document.createElement('div'); actions.className='shift-actions';
@@ -6206,6 +6231,35 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   // Trova i giorni con la firma esatta della contaminazione del vecchio bug: "km inizio" presente,
   // "km fine" assente, e NESSUN'ALTRA attività reale (niente turno, niente corse, niente spese).
   // Esclude sempre oggi, per non toccare mai un turno eventualmente in corso.
+  // Giorni in cui si è lavorato davvero (turno e/o corse registrate) ma manca il km finale:
+  // il chilometraggio di quella giornata non viene conteggiato da nessuna parte e il totale
+  // annuale risulta più basso del reale, senza che nulla lo segnali.
+  function trovaKmFineMancante(){
+    const todayKey = dateKey(new Date());
+    const incompleti = [];
+    Object.keys(state.days).forEach(k=>{
+      if(k===todayKey) return;
+      const d = state.days[k];
+      const haLavorato = !!d.shiftStart || !!d.shiftEnd || (d.entries && d.entries.length>0);
+      if(haLavorato && typeof d.kmEnd!=='number'){
+        incompleti.push(k);
+      }
+    });
+    return incompleti.sort();
+  }
+  function renderKmFineMancanteStatus(){
+    const box = document.getElementById('kmFineMancanteStatus');
+    if(!box) return;
+    const list = trovaKmFineMancante();
+    if(list.length===0){
+      box.textContent = 'Nessun giorno lavorato risulta senza km finale.';
+      box.style.color = '';
+    } else {
+      const date = list.map(k=>k.split('-').reverse().slice(0,2).join('/')).join(', ');
+      box.textContent = `${list.length} giorni lavorati senza km finale: ${date}. I chilometri di queste giornate non entrano nei totali — aprili e completa il km fine.`;
+      box.style.color = 'var(--red, #c4453b)';
+    }
+  }
   function trovaKmOrfani(){
     const todayKey = dateKey(new Date());
     const orfani = [];
@@ -6243,6 +6297,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     orfani.forEach(k=>{ state.days[k].kmStart = null; });
     await saveState();
     renderKmOrfaniStatus();
+    renderKmFineMancanteStatus();
     showToast(`Ripuliti ${orfani.length} giorni`);
   });
 
@@ -6327,6 +6382,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
   function openSettingsSheet(){
     buildMethodToggles();
     renderKmOrfaniStatus();
+    renderKmFineMancanteStatus();
     document.getElementById('setCoeff').value = state.settings.coeffRedditivita;
     document.getElementById('setSostitutiva').value = state.settings.aliquotaSostitutiva;
     document.getElementById('setVantaggio5').checked = state.settings.regimeVantaggio5;
