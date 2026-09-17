@@ -1937,7 +1937,7 @@
       panel.appendChild(pf);
     }
 
-    if(day.shiftStart && !isPaused){
+    if(day.shiftStart){
       const pauseRow = document.createElement('div'); pauseRow.className='field'; pauseRow.style.marginTop='12px';
       pauseRow.innerHTML = `<label>Minuti di pausa nel turno</label><input type="number" inputmode="numeric" id="pauseMinsInput" value="${day.pausedMinutes||0}">`;
       panel.appendChild(pauseRow);
@@ -1957,6 +1957,18 @@
       const pauseNote = document.createElement('div'); pauseNote.className='subnote';
       pauseNote.textContent = 'Correggi qui i minuti di pausa se hai dimenticato di riprendere il turno.';
       panel.appendChild(pauseNote);
+
+      // Avviso quando la pausa registrata è sproporzionata: succede se si mette in pausa e non si
+      // riprende più, perché alla chiusura del turno tutto quel tempo viene conteggiato come pausa.
+      if(day.shiftStart && day.shiftEnd && (day.pausedMinutes||0) > 0){
+        const lordo = Math.max(0, Math.round((new Date(day.shiftEnd).getTime() - new Date(day.shiftStart).getTime())/60000));
+        if(lordo > 0 && (day.pausedMinutes/lordo) > 0.5){
+          const warn = document.createElement('div'); warn.className='subnote';
+          warn.style.cssText = 'color:var(--red, #c4453b); margin-top:6px; font-weight:600;';
+          warn.textContent = `Attenzione: la pausa registrata (${fmtDuration(day.pausedMinutes)}) copre più di metà del turno (${fmtDuration(lordo)}). Probabilmente il turno è stato messo in pausa e mai ripreso: correggi il valore qui sopra.`;
+          panel.appendChild(warn);
+        }
+      }
     }
 
     const kmh = document.createElement('h4'); kmh.className='panel-subhead'; kmh.textContent='Chilometri'; panel.appendChild(kmh);
@@ -2110,11 +2122,19 @@
     if(!day.shiftStart || day.shiftEnd) return;
     if(day.pauseStart){
       const elapsed = Math.max(0, Math.round((Date.now() - new Date(day.pauseStart).getTime())/60000));
-      day.pausedMinutes = (day.pausedMinutes||0) + elapsed;
+      const lordo = Math.max(0, Math.round((Date.now() - new Date(day.shiftStart).getTime())/60000));
+      // Se la pausa non è mai stata ripresa, "elapsed" può valere ore intere e divorare il turno.
+      // In quel caso non la conteggio in automatico: meglio lasciare la pausa a quanto già
+      // registrato e far correggere il valore a mano, che falsare le ore lavorate in silenzio.
+      if(lordo > 0 && elapsed > lordo * 0.5){
+        showToast('Turno terminato · pausa non ripresa: controlla i minuti di pausa');
+      } else {
+        day.pausedMinutes = (day.pausedMinutes||0) + elapsed;
+      }
       day.pauseStart = null;
     }
     day.shiftEnd = new Date().toISOString();
-    showToast('Turno terminato');
+    if(!day.pauseStart) showToast('Turno terminato');
     await saveState(); renderMain();
   }
 
@@ -2223,6 +2243,10 @@
     const day = ensureDay(dayKey);
     let mins = parseInt(val, 10);
     if(isNaN(mins) || mins < 0) mins = 0;
+    // Se c'è una pausa ancora "aperta" (messa in pausa e mai ripresa), la chiudo qui: altrimenti
+    // il valore scritto a mano verrebbe ricalcolato e sovrascritto alla chiusura del turno,
+    // vanificando silenziosamente la correzione.
+    if(day.pauseStart) day.pauseStart = null;
     // La pausa non può superare la durata lorda del turno
     if(day.shiftStart){
       const endPoint = day.shiftEnd ? new Date(day.shiftEnd).getTime() : Date.now();
