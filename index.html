@@ -327,7 +327,7 @@
   .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
   .stat-box{background:var(--surface-2); border:1px solid var(--border); border-radius:11px; padding:12px;}
   .stat-box .lbl{font-size:10.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.05em;}
-  .stat-box .val{font-family:'JetBrains Mono', monospace; font-size:19px; margin-top:4px;}
+  .stat-box .val{font-family:'JetBrains Mono', monospace; font-size:19px; margin-top:4px; white-space:nowrap;}
   .stat-box .val.gold{color:var(--amber-ink);}
   .stat-box .val.green{color:var(--green);}
   .stat-box .val.red{color:var(--red);}
@@ -480,7 +480,10 @@
   .kv-row .k{ font-weight:600 !important; }
   .kv-row .v{ font-weight:700 !important; }
   .stat-box .lbl{ font-size:15px !important; font-weight:700 !important; }
-  .stat-box .val{ font-size:26px !important; font-weight:700 !important; }
+  /* Il valore deve stare su UNA riga dentro il riquadro: a 26px fissi un importo lungo
+     mandava il simbolo € a capo, facendo sembrare i riquadri storti. Con clamp il testo
+     si adatta alla larghezza dello schermo restando comunque ben leggibile. */
+  .stat-box .val{ font-size: clamp(16px, 4.6vw, 26px) !important; font-weight:700 !important; white-space:nowrap !important; }
   .entry-mid .t1{ font-size:19px !important; font-weight:700 !important; }
   .entry-mid .t2{ font-size:16px !important; font-weight:500 !important; color:var(--ink-muted) !important; }
   .entry-amt{ font-size:20px !important; font-weight:700 !important; }
@@ -1872,7 +1875,7 @@
       if(!day.shiftStart){
         cap.addEventListener('click', ()=> openKmTurnoSheet('start', dayKey));
       } else if(isRunning){
-        cap.addEventListener('click', ()=>{ showToast('⏸ Metto in pausa…'); pauseShift(dayKey); });
+        cap.addEventListener('click', ()=>{ pauseShift(dayKey); });
       } else if(isPaused){
         cap.addEventListener('click', ()=>{ showToast('▶︎ Riprendo…'); resumeShift(dayKey); });
       } else {
@@ -2129,6 +2132,12 @@
   async function pauseShift(dayKey){
     const day = ensureDay(dayKey);
     if(!day.shiftStart || day.shiftEnd || day.pauseStart) return;
+    const ok = await askConfirm(
+      'Mettere il turno in pausa?',
+      'Il tempo in pausa non verrà conteggiato tra le ore lavorate. Ricordati di riprendere il turno quando torni operativo.',
+      'Metti in pausa'
+    );
+    if(!ok) return;
     day.pauseStart = new Date().toISOString();
     showToast('Turno in pausa');
     await saveState(); renderMain();
@@ -2700,6 +2709,10 @@
     nav.querySelector('#rPrev').addEventListener('click', ()=>{ riepilogoMonth.setMonth(riepilogoMonth.getMonth()-1); renderMain(); });
     nav.querySelector('#rNext').addEventListener('click', ()=>{ riepilogoMonth.setMonth(riepilogoMonth.getMonth()+1); renderMain(); });
 
+    const oreMese = m.mins/60;
+    const mediaOraria = oreMese > 0 ? (m.entrate/oreMese) : null;
+    const resaKm = m.km > 0 ? (m.entrate/m.km) : null;
+
     const card1 = document.createElement('div'); card1.className='card';
     card1.innerHTML = `<h2>Mese in corso</h2><div class="stat-grid">
       <div class="stat-box"><div class="lbl">Entrate</div><div class="val green">${fmtMoney(m.entrate)} €</div></div>
@@ -2708,6 +2721,8 @@
       <div class="stat-box"><div class="lbl">Km percorsi</div><div class="val">${m.km.toLocaleString('it-IT')} km</div></div>
       <div class="stat-box"><div class="lbl">Ore lavorate</div><div class="val">${fmtDuration(m.mins)}</div></div>
       <div class="stat-box"><div class="lbl">Giorni con turno</div><div class="val">${Object.entries(state.days).filter(([k,d])=>k.startsWith(monthPrefix)&&d.shiftStart).length}</div></div>
+      <div class="stat-box"><div class="lbl">Media oraria</div><div class="val">${mediaOraria!=null ? fmtMoney(mediaOraria)+' €/h' : '—'}</div></div>
+      <div class="stat-box"><div class="lbl">Resa al km</div><div class="val">${resaKm!=null ? fmtMoney(resaKm)+' €/km' : '—'}</div></div>
     </div>`;
     container.appendChild(card1);
 
@@ -5940,6 +5955,18 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
         );
         if(!ok) return;
       }
+    }
+
+    // Se il turno di quel giorno è ancora in pausa, è quasi certo che ci si sia dimenticati di
+    // riprenderlo: lo segnalo e offro di riprenderlo subito. La voce viene salvata in ogni caso.
+    if(!editingEntryId && formKind==='entrata' && d.shiftStart && !d.shiftEnd && d.pauseStart){
+      const inPausaDa = Math.max(0, Math.round((Date.now() - new Date(d.pauseStart).getTime())/60000));
+      const riprendi = await askConfirm(
+        'Il turno è in pausa',
+        `Risulta in pausa da ${fmtDuration(inPausaDa)}: finché resta così, quel tempo non viene conteggiato tra le ore lavorate. La corsa verrà salvata in ogni caso.`,
+        'Riprendi turno'
+      );
+      if(riprendi) await resumeShift(targetDateStr);
     }
 
     const payload = {
