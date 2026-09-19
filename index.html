@@ -1543,7 +1543,12 @@
   function fmtDuration(mins){ return `${Math.floor(mins/60)}h ${pad(mins%60)}m`; }
   function workedMinutes(day){
     if(!day || !day.shiftStart) return 0;
-    const endPoint = day.pauseStart ? new Date(day.pauseStart).getTime() : (day.shiftEnd ? new Date(day.shiftEnd).getTime() : Date.now());
+    // Regola: una pausa "aperta" congela il conteggio solo finché il turno è IN CORSO.
+    // Se il turno ha già una fine, quella comanda: altrimenti una pausa rimasta aperta per errore
+    // troncherebbe il turno al momento della pausa, mostrando poche ore senza alcun segnale
+    // (il campo "minuti di pausa" resterebbe a 0 e il calo sarebbe inspiegabile).
+    const endPoint = day.shiftEnd ? new Date(day.shiftEnd).getTime()
+                   : (day.pauseStart ? new Date(day.pauseStart).getTime() : Date.now());
     const raw = Math.max(0, Math.round((endPoint - new Date(day.shiftStart).getTime())/60000));
     return Math.max(0, raw - (day.pausedMinutes||0));
   }
@@ -1677,6 +1682,21 @@
       state.migratedInpsFisso2026 = true;
     } else {
       state.migratedInpsFisso2026 = true;
+    }
+    // Pulizia: giorni con il turno già chiuso ma una pausa rimasta "aperta". È il residuo di un
+    // vecchio difetto: quella pausa aperta troncava silenziosamente le ore lavorate al momento
+    // della pausa, pur mostrando 0 minuti nel campo. I minuti di pausa già registrati restano
+    // intatti, si elimina solo la pausa pendente che non ha più senso su un turno concluso.
+    if(!parsed.migratedPauseOrfane){
+      let sistemati = 0;
+      Object.keys(state.days||{}).forEach(k=>{
+        const d = state.days[k];
+        if(d && d.shiftEnd && d.pauseStart){ d.pauseStart = null; sistemati++; }
+      });
+      state.migratedPauseOrfane = true;
+      if(sistemati > 0) console.log(`Pulite ${sistemati} pause rimaste aperte su turni già chiusi`);
+    } else {
+      state.migratedPauseOrfane = true;
     }
   }
   async function loadState(){
@@ -2265,9 +2285,22 @@
       }
     }
     if(day.pauseStart){
-      const elapsed = Math.max(0, Math.round((dt.getTime() - new Date(day.pauseStart).getTime())/60000));
-      day.pausedMinutes = (day.pausedMinutes||0) + elapsed;
-      day.pauseStart = null;
+      if(day.shiftEnd){
+        // Il turno era GIÀ chiuso: una pausa ancora aperta è un residuo di dati vecchi, non una
+        // pausa reale in corso. Sommarla qui gonfierebbe la pausa di ore intere a ogni ritocco
+        // dell'orario. La elimino e basta, lasciando i minuti di pausa come sono.
+        day.pauseStart = null;
+      } else {
+        const elapsed = Math.max(0, Math.round((dt.getTime() - new Date(day.pauseStart).getTime())/60000));
+        const lordo = Math.max(0, Math.round((dt.getTime() - new Date(day.shiftStart).getTime())/60000));
+        // Stessa cautela della chiusura turno: una pausa mai ripresa può divorare la giornata.
+        if(lordo > 0 && elapsed > lordo * 0.5){
+          showToast('Pausa non ripresa: controlla i minuti di pausa');
+        } else {
+          day.pausedMinutes = (day.pausedMinutes||0) + elapsed;
+        }
+        day.pauseStart = null;
+      }
     }
     day.shiftEnd = dt.toISOString();
     showToast('Orario di fine aggiornato');
