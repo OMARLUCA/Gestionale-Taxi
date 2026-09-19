@@ -967,6 +967,7 @@
       <div class="subnote" style="margin-bottom:6px;">Giorni lavorati a cui manca il km finale: i chilometri di quelle giornate restano fuori da tutti i totali.</div>
       <div id="kmFineMancanteStatus" class="subnote" style="margin-bottom:16px;"></div>
 
+
       <div class="subnote" style="margin-bottom:10px;">Corse o spese identiche (stesso giorno, ora, importo, metodo) che risultano duplicate — es. per un accavallamento di account sullo stesso telefono. Qui puoi controllarle prima di eliminare i doppioni.</div>
       <div id="doppioniStatus" class="subnote" style="margin-bottom:8px;"></div>
       <div id="doppioniLista"></div>
@@ -1720,6 +1721,26 @@
       if(sistemati > 0) console.log(`Pulite ${sistemati} pause rimaste aperte su turni già chiusi`);
     } else {
       state.migratedPauseOrfane = true;
+    }
+    // Riparazione: giorni il cui "km inizio" è più basso di una lettura già registrata in un
+    // giorno precedente. È impossibile (il contachilometri non torna indietro) ed è il residuo
+    // del vecchio riporto sbagliato, che gonfiava di centinaia di km la giornata. Correggo con
+    // la lettura più alta registrata prima. I km fine non vengono mai toccati.
+    if(!parsed.migratedKmIncoerenti){
+      const daSistemare = trovaKmIncoerenti();
+      daSistemare.forEach(r=>{
+        const g = state.days[r.dayKey];
+        if(g) g.kmStart = r.proposto;
+      });
+      state.migratedKmIncoerenti = true;
+      if(daSistemare.length > 0){
+        console.log(`Corretti i km inizio di ${daSistemare.length} giorni`);
+        setTimeout(()=>{
+          if(typeof showToast==='function') showToast(`Corretti i km di ${daSistemare.length} giorni`);
+        }, 1500);
+      }
+    } else {
+      state.migratedKmIncoerenti = true;
     }
   }
   async function loadState(){
@@ -6362,6 +6383,28 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       box.textContent = `${list.length} giorni lavorati senza km finale: ${date}. I chilometri di queste giornate non entrano nei totali — aprili e completa il km fine.`;
       box.style.color = 'var(--red, #c4453b)';
     }
+  }
+  // Giorni il cui "km inizio" è più basso di una lettura già registrata in un giorno precedente.
+  // È fisicamente impossibile (il contachilometri non torna indietro) ed è il residuo del vecchio
+  // riporto sbagliato: la conseguenza è che i km di quella giornata risultano gonfiati di centinaia
+  // di chilometri. Propongo come valore corretto la lettura più alta registrata prima.
+  function trovaKmIncoerenti(){
+    const out = [];
+    Object.keys(state.days).sort().forEach(k=>{
+      const g = state.days[k];
+      if(!g || typeof g.kmStart!=='number' || g.kmStart<=0) return;
+      const massimoPrima = kmFineGiornoPrecedente(k);
+      if(massimoPrima!=null && g.kmStart < massimoPrima){
+        out.push({
+          dayKey: k,
+          attuale: g.kmStart,
+          proposto: massimoPrima,
+          kmOggiPrima: (typeof g.kmEnd==='number') ? (g.kmEnd - g.kmStart) : null,
+          kmOggiDopo:  (typeof g.kmEnd==='number') ? (g.kmEnd - massimoPrima) : null
+        });
+      }
+    });
+    return out;
   }
   function trovaKmOrfani(){
     const todayKey = dateKey(new Date());
