@@ -1233,9 +1233,23 @@
       if(!t.entries) t.entries = [];
       const ids = new Set(t.entries.map(e=>e && e.id));
       (localDay.entries||[]).forEach(e=>{ if(e && !ids.has(e.id)){ t.entries.push(e); ids.add(e.id); } });
-      ['shiftStart','shiftEnd','pauseStart','pausedMinutes','kmStart','kmEnd'].forEach(campo=>{
-        if((t[campo]===null || t[campo]===undefined) && localDay[campo]!=null) t[campo] = localDay[campo];
-      });
+      // Campi singoli (orari, pause, km): non esiste un modo di "unirli", uno dei due deve vincere.
+      // Vince quello modificato più di recente, in base al timbro del giorno. Senza questo confronto
+      // vinceva sempre il cloud, e una correzione appena fatta a mano (tipico caso dei km) veniva
+      // silenziosamente riportata al valore vecchio alla prima sincronizzazione.
+      const campi = ['shiftStart','shiftEnd','pauseStart','pausedMinutes','kmStart','kmEnd'];
+      const localeTs = localDay.updatedAt || '';
+      const cloudTs  = t.updatedAt || '';
+      if(localeTs && localeTs > cloudTs){
+        campi.forEach(campo=>{ if(localDay[campo]!==undefined) t[campo] = localDay[campo]; });
+        t.updatedAt = localeTs;
+      } else {
+        // Non so quale sia più recente (dati vecchi senza timbro): tengo il cloud e recupero
+        // solo i campi che lì mancano del tutto, come prima.
+        campi.forEach(campo=>{
+          if((t[campo]===null || t[campo]===undefined) && localDay[campo]!=null) t[campo] = localDay[campo];
+        });
+      }
     });
   }
   async function cloudPull(){
@@ -1607,6 +1621,15 @@
     if(typeof state.days[key].giornoMotivo==='undefined') state.days[key].giornoMotivo = null;
     return state.days[key];
   }
+  // Segna il giorno come modificato adesso. Serve alla sincronizzazione per capire, quando la
+  // stessa giornata esiste sia in locale sia nel cloud con valori diversi, quale versione è la
+  // più recente: senza questo timbro vincerebbe sempre il cloud, cancellando le correzioni fatte
+  // a mano su orari e chilometri.
+  function touchDay(keyOrDay){
+    const d = (typeof keyOrDay === 'string') ? ensureDay(keyOrDay) : keyOrDay;
+    if(d) d.updatedAt = new Date().toISOString();
+    return d;
+  }
   function getMonthReadonly(key){ return state.months[key] || { dichiarazioneOverride:null, speseMediche:0, ferieGiorni:0, foglioN:null, note:'' }; }
   function ensureMonth(key){
     if(!state.months[key]) state.months[key] = { dichiarazioneOverride:null, speseMediche:0, ferieGiorni:0, foglioN:null, note:'' };
@@ -1838,14 +1861,22 @@
   // ormai superato, sovrascrivendo una correzione fatta nel frattempo.
   let shiftStartTO=null, shiftEndTO=null, pauseMinsTO=null, kmSaveTO=null, kmAnnoTO=null;
   let kmCardTO=null, noteMeseTO=null, medTO=null, ammTO=null, credTO=null, accVersTO=null;
+  // Km di partenza da riportare su un nuovo giorno. Il contachilometri può solo salire, quindi
+  // prendo la lettura PIÙ ALTA registrata nei giorni precedenti, considerando sia i km fine sia
+  // i km inizio. Prendere solo "l'ultimo giorno con un km fine" faceva tornare indietro il
+  // contatore ogni volta che un giorno intermedio restava senza km fine, gonfiando di centinaia
+  // di km il totale del giorno dopo.
   function kmFineGiornoPrecedente(dayKey){
-    const d = new Date(dayKey+'T00:00:00');
-    for(let i=0; i<366; i++){
-      d.setDate(d.getDate()-1);
-      const prev = state.days[dateKey(d)];
-      if(prev && typeof prev.kmEnd==='number') return prev.kmEnd;
-    }
-    return null;
+    let massimo = null;
+    Object.keys(state.days).forEach(k=>{
+      if(k >= dayKey) return; // solo i giorni precedenti
+      const g = state.days[k];
+      if(!g) return;
+      [g.kmEnd, g.kmStart].forEach(v=>{
+        if(typeof v === 'number' && v > 0 && (massimo===null || v > massimo)) massimo = v;
+      });
+    });
+    return massimo;
   }
   function renderShiftCapsule(container, dayKey, day, isToday){
     // Km inizio di default = km fine del giorno precedente, se non ancora impostato per oggi.
@@ -1858,6 +1889,7 @@
       if(prevEnd!=null){
         const dReal = ensureDay(dayKey);
         dReal.kmStart = prevEnd;
+        touchDay(dReal);
         day = dReal;
         saveState();
       }
@@ -2018,6 +2050,7 @@
         const s = kg.querySelector('#kmStart').value, e = kg.querySelector('#kmFine').value;
         const d = ensureDay(dayKey);
         d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+        touchDay(d);
         await saveState();
       }, 500);
     }
@@ -2026,6 +2059,7 @@
       const s = kg.querySelector('#kmStart').value, e = kg.querySelector('#kmFine').value;
       const d = ensureDay(dayKey);
       d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+      touchDay(d);
       saveState();
     }
     kg.querySelector('#kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
@@ -2046,6 +2080,7 @@
         sugg.addEventListener('click', async ()=>{
           const d = ensureDay(dayKey);
           d.kmStart = prevEnd;
+          touchDay(d);
           await saveState();
           renderMain();
         });
@@ -2159,6 +2194,7 @@
     );
     if(!ok) return;
     day.pauseStart = new Date().toISOString();
+    touchDay(day);
     showToast('Turno in pausa');
     await saveState(); renderMain();
   }
@@ -2168,6 +2204,7 @@
     const elapsed = Math.max(0, Math.round((Date.now() - new Date(day.pauseStart).getTime())/60000));
     day.pausedMinutes = (day.pausedMinutes||0) + elapsed;
     day.pauseStart = null;
+    touchDay(day);
     showToast('Turno ripreso');
     await saveState(); renderMain();
   }
@@ -2188,6 +2225,7 @@
       day.pauseStart = null;
     }
     day.shiftEnd = new Date().toISOString();
+    touchDay(day);
     if(!day.pauseStart) showToast('Turno terminato');
     await saveState(); renderMain();
   }
@@ -2255,6 +2293,7 @@
       return;
     }
     day.shiftStart = dt.toISOString();
+    touchDay(day);
     showToast('Orario di inizio aggiornato');
     await saveState(); renderMain();
   }
@@ -2303,6 +2342,7 @@
       }
     }
     day.shiftEnd = dt.toISOString();
+    touchDay(day);
     showToast('Orario di fine aggiornato');
     await saveState(); renderMain();
   }
@@ -2324,6 +2364,7 @@
       }
     }
     day.pausedMinutes = mins;
+    touchDay(day);
     await saveState(); renderMain();
   }
 
@@ -2348,6 +2389,7 @@
         const s = document.getElementById('kmStart').value, e = document.getElementById('kmFine').value;
         const d = ensureDay(dayKey);
         d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+        touchDay(d);
         await saveState();
       }, 500);
     }
@@ -2356,6 +2398,7 @@
       const s = document.getElementById('kmStart').value, e = document.getElementById('kmFine').value;
       const d = ensureDay(dayKey);
       d.kmStart = s===''?null:parseFloat(s); d.kmEnd = e===''?null:parseFloat(e);
+      touchDay(d);
       saveState();
     }
     document.getElementById('kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleSave(); });
