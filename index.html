@@ -303,6 +303,7 @@
   .entry-swipe:last-child{border-bottom:none;}
   .entry-delete-reveal{position:absolute; top:0; right:0; bottom:0; width:84px; background:var(--red); color:#fff; display:flex; align-items:center; justify-content:center; font-family:'Oswald', sans-serif; font-size:12px; letter-spacing:0.04em; text-transform:uppercase; font-weight:600; cursor:pointer;}
   .entry-row-content{position:relative; background:var(--surface); display:flex; align-items:center; gap:12px; padding:12px 0; touch-action:pan-y; cursor:pointer; will-change:transform;}
+  body.zoom-on .entry-row-content{touch-action:pan-y pinch-zoom;}
   .entry-icon{width:38px; height:38px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-family:'Oswald', sans-serif; font-size:11px; font-weight:600; background:var(--surface-2); color:var(--ink-muted); text-transform:uppercase;}
   .entry-icon.posteggio{background:var(--amber-soft); color:var(--amber-ink);}
   .entry-icon.radio{background:var(--blue-soft); color:var(--blue);}
@@ -947,6 +948,15 @@
       <div class="form-row"><label>Sigla taxi</label><input type="text" id="setScanSigla"></div>
       <div class="form-row"><label>Seriale</label><input type="text" id="setScanSeriale"></div>
       <div class="form-row"><label>IBAN di accredito</label><input type="text" id="setScanIban"></div>
+    </div>
+
+    <div class="settings-section" id="accessibilitaSection">
+      <h4>Accessibilità</h4>
+      <div class="subnote" style="margin-bottom:10px;">Di norma l'app è bloccata alla dimensione fissa. Attivando lo zoom si può ingrandire qualsiasi schermata con due dita, come in una pagina web normale.</div>
+      <label style="display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; padding:4px 0;">
+        <span style="font-size:14px;">Permetti lo zoom con due dita<br><span class="subnote" style="font-size:11.5px;">Utile per chi fatica a leggere i caratteri più piccoli.</span></span>
+        <span class="switch"><input type="checkbox" id="setZoomAbilitato"><span class="track"></span><span class="thumb"></span></span>
+      </label>
     </div>
 
     <div class="settings-section" id="turnoNotturnoSection">
@@ -1597,6 +1607,7 @@
     addRegionaleAttiva: false,
     addRegionalePerc: 1.73,
     turnoNotturnoManuale: false,
+    zoomAbilitato: false,
     scanAnagrafica: { nome:'', sigla:'', seriale:'', iban:'' },
     registro: { conducente:'', indirizzo:'', citta:'', vettura1:'', targa1:'', civ1:'', alim1:'', vettura2:'', targa2:'', civ2:'', alim2:'', codUtente:'', intestazione:true }
   };
@@ -1631,6 +1642,22 @@
     if(d) d.updatedAt = new Date().toISOString();
     return d;
   }
+  // Zoom con due dita: di default l'app resta bloccata a dimensione fissa (maximum-scale=1).
+  // Attivando l'impostazione si alza il limite e si consente il pizzico su tutte le schermate.
+  // Le liste che usano lo scorrimento laterale per cancellare dichiarano touch-action:pan-y, che
+  // impedirebbe il pizzico proprio lì: con lo zoom attivo aggiungo pinch-zoom per non lasciare
+  // zone della schermata non ingrandibili.
+  function applicaZoom(){
+    const attivo = !!(state.settings && state.settings.zoomAbilitato);
+    const meta = document.querySelector('meta[name="viewport"]');
+    if(meta){
+      meta.setAttribute('content', attivo
+        ? 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5, user-scalable=yes'
+        : 'width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1');
+    }
+    document.body.classList.toggle('zoom-on', attivo);
+  }
+
   function getMonthReadonly(key){ return state.months[key] || { dichiarazioneOverride:null, speseMediche:0, ferieGiorni:0, foglioN:null, note:'' }; }
   function ensureMonth(key){
     if(!state.months[key]) state.months[key] = { dichiarazioneOverride:null, speseMediche:0, ferieGiorni:0, foglioN:null, note:'' };
@@ -6543,6 +6570,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     document.getElementById('setAddRegPerc').value = state.settings.addRegionalePerc;
     document.getElementById('setCamerale').value = state.settings.dirittoCamerale;
     document.getElementById('setTurnoNotturno').checked = state.settings.turnoNotturnoManuale;
+    document.getElementById('setZoomAbilitato').checked = !!state.settings.zoomAbilitato;
     document.getElementById('setScanNome').value = state.settings.scanAnagrafica.nome;
     document.getElementById('setScanSigla').value = state.settings.scanAnagrafica.sigla;
     document.getElementById('setScanSeriale').value = state.settings.scanAnagrafica.seriale;
@@ -6830,6 +6858,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
     state.settings.addRegionalePerc = parseFloat(document.getElementById('setAddRegPerc').value) || 0;
     state.settings.dirittoCamerale = parseFloat(document.getElementById('setCamerale').value) || 0;
     state.settings.turnoNotturnoManuale = document.getElementById('setTurnoNotturno').checked;
+    state.settings.zoomAbilitato = document.getElementById('setZoomAbilitato').checked;
     state.settings.scanAnagrafica = {
       nome: document.getElementById('setScanNome').value.trim(),
       sigla: document.getElementById('setScanSigla').value.trim(),
@@ -6837,6 +6866,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       iban: document.getElementById('setScanIban').value.trim()
     };
     await saveState();
+    applicaZoom();
     overlaySet.classList.remove('show');
     showToast('Impostazioni salvate');
     renderMain();
@@ -6849,6 +6879,7 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       await loadState();
       renderMain();
     }
+    applicaZoom();                       // rispetta l'impostazione salvata fin dall'avvio
   })();
 
 })();
