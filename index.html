@@ -1301,11 +1301,43 @@
     cloudTimer = setTimeout(()=>{ cloudPush(); }, 1500);
   }
 
+  // Campi di un giorno che si correggono a mano.
+  const CAMPI_GIORNO_A_MANO = ['shiftStart','shiftEnd','pauseStart','pausedMinutes','kmStart','kmEnd'];
+  // Se nel cloud un giorno ha orari/pause/km modificati PIÙ DI RECENTE della mia copia, tengo quelli.
+  // Serve quando la stessa app è aperta in due posti: la copia rimasta indietro non deve cancellare
+  // una correzione fatta nell'altra. Tocco solo i giorni presenti da entrambe le parti e solo questi
+  // campi: le corse e i giorni cancellati non vengono mai fatti ricomparire. Ritorna quanti giorni ha corretto.
+  function unisciCampiGiorniDaCloud(remote){
+    const rd = (remote && remote.days) || {};
+    let cambiati = 0;
+    Object.keys(rd).forEach(k=>{
+      const r = rd[k], l = state.days && state.days[k];
+      if(!r || !l) return;
+      const rt = r.updatedAt || '', lt = l.updatedAt || '';
+      if(rt && rt > lt){
+        CAMPI_GIORNO_A_MANO.forEach(c=>{ if(r[c] !== undefined) l[c] = r[c]; });
+        l.updatedAt = rt;
+        cambiati++;
+      }
+    });
+    return cambiati;
+  }
+
   async function cloudPush(silent){
     if(!cloudOn() || !currentUser || cloudBusy) return;
     cloudBusy = true;
     try{
       if(!silent) setPill('Salvo nel cloud…');
+      // Guardo cosa c'è già nel cloud prima di scrivere. Se la lettura non riesce si scrive come prima.
+      try{
+        const { data: riga, error: errLettura } = await sb.from('registro').select('data')
+          .eq('user_id', currentUser.id).maybeSingle();
+        if(!errLettura && riga && riga.data && unisciCampiGiorniDaCloud(riga.data) > 0){
+          try{ await window.storage.set(storageKey(), JSON.stringify(state), false); }catch(_){}
+          const scrivendo = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+          if(!scrivendo && typeof renderMain==='function') renderMain();
+        }
+      }catch(_){ /* lettura non riuscita: nessuna unione */ }
       const { error } = await sb.from('registro').upsert({
         user_id: currentUser.id,
         data: state,
@@ -1749,26 +1781,8 @@
     } else {
       state.migratedPauseOrfane = true;
     }
-    // Riparazione: giorni il cui "km inizio" è più basso di una lettura già registrata in un
-    // giorno precedente. È impossibile (il contachilometri non torna indietro) ed è il residuo
-    // del vecchio riporto sbagliato, che gonfiava di centinaia di km la giornata. Correggo con
-    // la lettura più alta registrata prima. I km fine non vengono mai toccati.
-    if(!parsed.migratedKmIncoerenti){
-      const daSistemare = trovaKmIncoerenti();
-      daSistemare.forEach(r=>{
-        const g = state.days[r.dayKey];
-        if(g) g.kmStart = r.proposto;
-      });
-      state.migratedKmIncoerenti = true;
-      if(daSistemare.length > 0){
-        console.log(`Corretti i km inizio di ${daSistemare.length} giorni`);
-        setTimeout(()=>{
-          if(typeof showToast==='function') showToast(`Corretti i km di ${daSistemare.length} giorni`);
-        }, 1500);
-      }
-    } else {
-      state.migratedKmIncoerenti = true;
-    }
+    // (Nessuna riparazione dei km: resta solo l'etichetta "già fatta", così i dati salvati restano identici a prima.)
+    state.migratedKmIncoerenti = true;
   }
   async function loadState(){
     try{
@@ -1909,22 +1923,25 @@
   // ormai superato, sovrascrivendo una correzione fatta nel frattempo.
   let shiftStartTO=null, shiftEndTO=null, pauseMinsTO=null, kmSaveTO=null, kmAnnoTO=null;
   let kmCardTO=null, noteMeseTO=null, medTO=null, ammTO=null, credTO=null, accVersTO=null;
+  const kmAutoRiempiti = new Set();   // giorni il cui km inizio è già stato proposto in questa sessione
   // Km di partenza da riportare su un nuovo giorno. Il contachilometri può solo salire, quindi
   // prendo la lettura PIÙ ALTA registrata nei giorni precedenti, considerando sia i km fine sia
   // i km inizio. Prendere solo "l'ultimo giorno con un km fine" faceva tornare indietro il
   // contatore ogni volta che un giorno intermedio restava senza km fine, gonfiando di centinaia
   // di km il totale del giorno dopo.
   function kmFineGiornoPrecedente(dayKey){
-    let massimo = null;
-    Object.keys(state.days).forEach(k=>{
-      if(k >= dayKey) return; // solo i giorni precedenti
+    // Parto dal giorno PIÙ RECENTE che ha almeno una lettura di km e prendo la più alta di quel
+    // giorno (così un giorno senza km fine non fa tornare indietro il contatore). Non guardo
+    // tutta la storia: un solo numero sbagliato molto alto, scritto mesi prima, non deve
+    // inquinare tutti i giorni successivi.
+    const giorni = Object.keys(state.days).filter(k=> k < dayKey).sort().reverse();
+    for(const k of giorni){
       const g = state.days[k];
-      if(!g) return;
-      [g.kmEnd, g.kmStart].forEach(v=>{
-        if(typeof v === 'number' && v > 0 && (massimo===null || v > massimo)) massimo = v;
-      });
-    });
-    return massimo;
+      if(!g) continue;
+      const letture = [g.kmEnd, g.kmStart].filter(v=> typeof v === 'number' && v > 0);
+      if(letture.length) return Math.max(...letture);
+    }
+    return null;
   }
   function renderShiftCapsule(container, dayKey, day, isToday){
     // Km inizio di default = km fine del giorno precedente, se non ancora impostato per oggi.
@@ -1932,12 +1949,14 @@
     // scrivere né salvare nulla su quel giorno.
     // Nota: uno zero va trattato come "mancante", altrimenti il riporto non scatta mai e il
     // conteggio dei km percorsi diventa assurdo (km fine meno zero).
-    if(isToday && (day.kmStart==null || day.kmStart===0)){
+    if(isToday && (day.kmStart==null || day.kmStart===0) && !kmAutoRiempiti.has(dayKey)){
       const prevEnd = kmFineGiornoPrecedente(dayKey);
       if(prevEnd!=null){
         const dReal = ensureDay(dayKey);
         dReal.kmStart = prevEnd;
-        touchDay(dReal);
+        kmAutoRiempiti.add(dayKey);   // una volta sola: se poi cancelli il campo non lo riempio di nuovo
+        // Niente timbro "modificato adesso": è un valore proposto dall'app, non una tua correzione,
+        // e non deve mai prevalere su una modifica fatta davvero a mano.
         day = dReal;
         saveState();
       }
@@ -2110,7 +2129,7 @@
       touchDay(d);
       saveState();
     }
-    kg.querySelector('#kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
+    kg.querySelector('#kmStart').addEventListener('input', ()=>{ kmAutoRiempiti.add(dayKey); renderDelta(); scheduleKmSave(); });
     kg.querySelector('#kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleKmSave(); });
     kg.querySelector('#kmStart').addEventListener('blur', salvaKmSubito);
     kg.querySelector('#kmFine').addEventListener('blur', salvaKmSubito);
@@ -2449,7 +2468,7 @@
       touchDay(d);
       saveState();
     }
-    document.getElementById('kmStart').addEventListener('input', ()=>{ renderDelta(); scheduleSave(); });
+    document.getElementById('kmStart').addEventListener('input', ()=>{ kmAutoRiempiti.add(dayKey); renderDelta(); scheduleSave(); });
     document.getElementById('kmFine').addEventListener('input', ()=>{ renderDelta(); scheduleSave(); });
     document.getElementById('kmStart').addEventListener('blur', salvaSubito);
     document.getElementById('kmFine').addEventListener('blur', salvaSubito);
