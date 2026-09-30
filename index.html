@@ -4401,7 +4401,8 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
       <div class="kv-row"><span class="k">Totale importi</span><span class="v">${fmtMoney(totale)} €</span></div>
       <div class="kv-row"><span class="k">Da archiviare</span><span class="v">${daArchiviare.length} · ${fmtMoney(totaleDaArchiviare)} €</span></div>
       <div class="kv-row"><span class="k">Pagamenti registrati</span><span class="v">${pagamenti.length} (${archiviate.length} corse)</span></div>
-      <button class="save-btn" id="genScanPdfBtn" style="margin-top:10px;" ${list.length===0?'disabled':''}>📄 Genera PDF riepilogo</button>`;
+      <button class="save-btn" id="genScanPdfBtn" style="margin-top:10px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);" ${list.length===0?'disabled':''}>📄 PDF di tutte le ${list.length} corse</button>
+      <div class="subnote" style="margin-top:6px;">Per il PDF da inviare a chi deve pagarti, seleziona le corse qui sotto: il pulsante del PDF compare insieme alla selezione.</div>`;
     container.appendChild(sumCard);
 
     // Filtro: Da archiviare (default) / Pagamenti / Tutte — tutto resta sempre richiamabile.
@@ -4430,9 +4431,14 @@ const CORR_HEADER_IMG_B64 = "iVBORw0KGgoAAAANSUhEUgAACsQAAACUCAIAAACh5UlPAAEAAEl
           const selTot = selEntries.reduce((s,e)=> s + (parseFloat(String(e.prezzo).replace(',','.'))||0), 0);
           const actionCard = document.createElement('div'); actionCard.className='card';
           actionCard.style.cssText='position:sticky; top:0; z-index:5; background:var(--amber-soft, var(--surface-2));';
-          actionCard.innerHTML = `<button class="save-btn" id="creaPagamentoBtn">💰 Crea pagamento (${selEntries.length} ${selEntries.length===1?'corsa':'corse'} · ${fmtMoney(selTot)} €)</button>`;
+          actionCard.innerHTML = `<button class="save-btn" id="creaPagamentoBtn">💰 Crea pagamento (${selEntries.length} ${selEntries.length===1?'corsa':'corse'} · ${fmtMoney(selTot)} €)</button>
+            <button class="save-btn" id="pdfSelezionateBtn" style="margin-top:8px; background:var(--surface-2); color:var(--ink); border:1px solid var(--border);">📄 Genera PDF delle ${selEntries.length===1?'corsa selezionata':'corse selezionate'}</button>`;
           container.appendChild(actionCard);
           actionCard.querySelector('#creaPagamentoBtn').addEventListener('click', ()=> openPagamentoCreateSheet([...scanSelected]));
+          actionCard.querySelector('#pdfSelezionateBtn').addEventListener('click', (ev)=>{
+            ev.stopPropagation();
+            exportScansioniPdf(ev.currentTarget, selEntries);
+          });
         }
         const listCard = document.createElement('div'); listCard.className='card';
         listCard.innerHTML = `<h2>Da archiviare</h2><div class="subnote" style="margin-bottom:8px;">Seleziona le corse pagate insieme (es. lo stesso bonifico) e crea un pagamento. Scorri una riga verso sinistra per eliminarla.</div>`;
